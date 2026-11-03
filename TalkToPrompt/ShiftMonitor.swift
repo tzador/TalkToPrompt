@@ -29,36 +29,83 @@ final class ShiftMonitor: ObservableObject {
     }
 
     @Published private(set) var status: Status = .checking
+    @Published private(set) var hasEventPostingPermission = false
     @Published var showPermissionExplanation = false
     @Published var playbackError: String?
+    @Published var insertionError: String?
+    @Published var showRestartConfirmation = false
+    @Published var restartError: String?
+    @Published private(set) var isRestarting = false
 
     private let beepPlayer = BeepPlayer()
+    private let textInserter = ClipboardTextInserter()
+    private var insertionTasks: [UUID: Task<Void, Never>] = [:]
     private var chord = ShiftChordState()
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var permissionTimer: Timer?
     private var wakeObserver: NSObjectProtocol?
+    private var activationObserver: NSObjectProtocol?
+    private var awaitingAccessibilitySettingsReturn = false
+    private var visitedAccessibilitySettings = false
     private var started = false
     private let defaults: UserDefaults
     private let checkPermission: () -> Bool
     private let requestAccess: () -> Bool
+    private let checkEventPostingPermission: () -> Bool
+    private let requestEventPostingAccess: () -> Bool
+    private let openSettings: (String) -> Void
+    private let frontmostBundleIdentifier: () -> String?
+    private let launchNewInstance: @MainActor () async throws -> Void
+    private let terminateCurrentInstance: @MainActor () -> Void
     private static let requestedPermissionKey = "hasRequestedInputMonitoring"
+    private static let requestedEventPostingKey = "hasRequestedEventPosting"
+
+    var hasInputMonitoringPermission: Bool {
+        status == .monitoring || status == .unavailable
+    }
 
     init(
         defaults: UserDefaults = .standard,
         checkPermission: @escaping () -> Bool = CGPreflightListenEventAccess,
-        requestAccess: @escaping () -> Bool = CGRequestListenEventAccess
+        requestAccess: @escaping () -> Bool = CGRequestListenEventAccess,
+        checkEventPostingPermission: @escaping () -> Bool = CGPreflightPostEventAccess,
+        requestEventPostingAccess: @escaping () -> Bool = CGRequestPostEventAccess,
+        openSettings: @escaping (String) -> Void = { pane in
+            let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)")!
+            if !NSWorkspace.shared.open(url) {
+                NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/System Settings.app"))
+            }
+        },
+        frontmostBundleIdentifier: @escaping () -> String? = { NSWorkspace.shared.frontmostApplication?.bundleIdentifier },
+        launchNewInstance: @escaping @MainActor () async throws -> Void = {
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.createsNewApplicationInstance = true
+            configuration.activates = true
+            _ = try await NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration)
+        },
+        terminateCurrentInstance: @escaping @MainActor () -> Void = { NSApp.terminate(nil) }
     ) {
         self.defaults = defaults
         self.checkPermission = checkPermission
         self.requestAccess = requestAccess
+        self.checkEventPostingPermission = checkEventPostingPermission
+        self.requestEventPostingAccess = requestEventPostingAccess
+        self.openSettings = openSettings
+        self.frontmostBundleIdentifier = frontmostBundleIdentifier
+        self.launchNewInstance = launchNewInstance
+        self.terminateCurrentInstance = terminateCurrentInstance
     }
 
     func start() {
         guard !started else { return }
         started = true
         refreshPermission()
-        if status == .needsPermission && !defaults.bool(forKey: Self.requestedPermissionKey) {
+        let explainInputMonitoring = status == .needsPermission
+            && !defaults.bool(forKey: Self.requestedPermissionKey)
+        let explainEventPosting = !hasEventPostingPermission
+            && !defaults.bool(forKey: Self.requestedEventPostingKey)
+        if explainInputMonitoring || explainEventPosting {
             showPermissionExplanation = true
         }
 
@@ -74,16 +121,33 @@ final class ShiftMonitor: ObservableObject {
                 self?.refreshPermission()
             }
         }
+        activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] notification in
+            let application = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            let bundleIdentifier = application?.bundleIdentifier
+            Task { @MainActor [weak self] in
+                self?.applicationActivated(bundleIdentifier: bundleIdentifier)
+            }
+        }
     }
 
     func stop() {
         started = false
+        for task in insertionTasks.values { task.cancel() }
+        textInserter.restorePendingClipboard()
         permissionTimer?.invalidate()
         permissionTimer = nil
         if let wakeObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)
         }
         wakeObserver = nil
+        if let activationObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(activationObserver)
+        }
+        activationObserver = nil
+        awaitingAccessibilitySettingsReturn = false
+        visitedAccessibilitySettings = false
         stopTap()
         status = .checking
     }
@@ -96,20 +160,76 @@ final class ShiftMonitor: ObservableObject {
     }
 
     func openInputMonitoringSettings() {
-        let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")!
-        if !NSWorkspace.shared.open(url) {
-            NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/System Settings.app"))
+        // Register the app with macOS if needed, then always open Settings,
+        // including when the system no longer displays another consent prompt.
+        if !checkPermission() { requestPermission() }
+        openPrivacySettings("Privacy_ListenEvent")
+    }
+
+    func requestEventPostingPermission() {
+        showPermissionExplanation = false
+        defaults.set(true, forKey: Self.requestedEventPostingKey)
+        _ = requestEventPostingAccess()
+        refreshPermission()
+    }
+
+    func openAccessibilitySettings() {
+        if !checkEventPostingPermission() {
+            requestEventPostingPermission()
+            awaitingAccessibilitySettingsReturn = true
+            visitedAccessibilitySettings = false
+        }
+        openPrivacySettings("Privacy_Accessibility")
+        // Settings may already have been frontmost when its button was clicked.
+        applicationActivated(bundleIdentifier: frontmostBundleIdentifier())
+    }
+
+    private func openPrivacySettings(_ pane: String) {
+        openSettings(pane)
+    }
+
+    func applicationActivated(bundleIdentifier: String?) {
+        guard started else { return }
+        if bundleIdentifier == "com.apple.systempreferences" && awaitingAccessibilitySettingsReturn {
+            visitedAccessibilitySettings = true
+        }
+        guard bundleIdentifier == Bundle.main.bundleIdentifier else { return }
+        refreshPermission()
+        if awaitingAccessibilitySettingsReturn && visitedAccessibilitySettings {
+            awaitingAccessibilitySettingsReturn = false
+            visitedAccessibilitySettings = false
+            // The permission check can stay false until relaunch, even after
+            // the user has enabled the toggle. Offer a restart in either case.
+            showRestartConfirmation = true
+        }
+    }
+
+    func restart() async {
+        guard !isRestarting else { return }
+        isRestarting = true
+        showRestartConfirmation = false
+        stop() // Restore the clipboard before launching another instance.
+        do {
+            try await launchNewInstance()
+            terminateCurrentInstance()
+        } catch {
+            isRestarting = false
+            start()
+            restartError = "TalkToPrompt could not restart: \(error.localizedDescription). Quit and reopen the app manually."
         }
     }
 
     func refreshPermission() {
         guard started else { return }
+        // Posting and listening are independent permissions. Missing posting
+        // access must not prevent the Shift tones from working.
+        hasEventPostingPermission = checkEventPostingPermission()
         guard checkPermission() else {
             stopTap()
             status = .needsPermission
             return
         }
-        showPermissionExplanation = false
+        if hasEventPostingPermission { showPermissionExplanation = false }
         if let eventTap, CGEvent.tapIsEnabled(tap: eventTap) {
             status = .monitoring
             return
@@ -186,6 +306,24 @@ final class ShiftMonitor: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self, self.started, self.status == .monitoring else { return }
                 self.playBeep(pressed ? .pressed : .released)
+                if !pressed { self.insertGreeting() }
+            }
+        }
+    }
+
+    private func insertGreeting() {
+        hasEventPostingPermission = checkEventPostingPermission()
+        guard hasEventPostingPermission else { return }
+        let id = UUID()
+        insertionTasks[id] = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.insertionTasks[id] = nil }
+            do {
+                try await self.textInserter.insert("hello, world")
+            } catch is CancellationError {
+                // Closing the app cancels pending pastes and restores the clipboard.
+            } catch {
+                self.insertionError = error.localizedDescription
             }
         }
     }

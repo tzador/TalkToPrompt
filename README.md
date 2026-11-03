@@ -2,15 +2,27 @@
 
 A native macOS SwiftUI app with a single window and a centered **Play Beep** button. Pressing it plays a 440 Hz sine wave for one second. Closing the window quits the app and stops keyboard monitoring.
 
-While the app is running, holding **left Shift + right Shift** plays a one-second **440 Hz** sine wave. Releasing either Shift plays a one-second **880 Hz** sine wave. Either press order works; keeping the keys held does not repeat the sound. The two tones can overlap if you release quickly, so each can finish its full second. Repeating the same tone restarts it.
+The window has a fixed 720 × 480 point content area and cannot be resized. A persistent bottom status bar shows **Input Monitoring** and **Accessibility** permission states, with one **Open System Settings** button for each permission. macOS measures window layout in points; Retina displays render these at their display scale.
 
-## Input Monitoring permission
+While the app is running, holding **left Shift + right Shift** plays a one-second **440 Hz** sine wave. Releasing either Shift plays a one-second **880 Hz** sine wave and pastes **hello, world** into the currently focused app when Accessibility permission is granted. Either press order works; keeping the keys held does not repeat the sound. The two tones can overlap if you release quickly, so each can finish its full second. Repeating the same tone restarts it.
 
-At startup, the app checks Input Monitoring permission. If it has never requested access, it explains the shortcut and offers **Enable Input Monitoring** or **Not Now**. Enabling requests access through macOS; the app cannot grant permission itself.
+## Keyboard permissions
 
-In **System Settings → Privacy & Security → Input Monitoring**, enable **TalkToPrompt**. The app rechecks when you return and periodically while running. If macOS asks you to quit and reopen the app, do so. If access is enabled but monitoring cannot start, quit and reopen the app. The window also provides **Open System Settings** whenever access is missing.
+At startup, the app checks Input Monitoring and event-posting permission. If a missing permission has never been requested, it explains both permissions and offers an **Open System Settings** button for each missing permission, plus **Not Now**. Each Settings button requests access if missing and opens the corresponding macOS Settings pane; the app cannot grant permission itself. Declining a request leaves a reminder in the window without repeatedly showing the startup explanation.
+
+In **System Settings → Privacy & Security → Input Monitoring**, enable **TalkToPrompt**. The app rechecks when you return and periodically while running. If macOS asks you to quit and reopen the app, do so. If access is enabled but monitoring cannot start, quit and reopen the app. The **Open System Settings** beside Input Monitoring button in the status bar always opens its Settings pane.
 
 Monitoring works while other apps have focus. It uses a passive event tap for modifier changes only, does not record typed text, and does not intercept keyboard input. The **Play Beep** button works without permission. macOS may restrict monitoring during protected input, such as password entry.
+
+Event-posting permission is shown under **System Settings → Privacy & Security → Accessibility**. Use **Open System Settings** beside Accessibility in the startup explanation or status bar to request access if missing and open Settings so you can enable **TalkToPrompt**. Its status is rechecked when you return and periodically while running. Follow any macOS quit-and-reopen instructions. This permission is required for automatic pasting when the Shift chord is released. Missing Accessibility permission does not block the Shift tones. If you open Accessibility settings while access is missing, returning to TalkToPrompt shows an in-app **Restart** / **Not Now** prompt, even if macOS does not offer to restart. Choose Restart after enabling the toggle. The app restores any pending clipboard backup and launches a replacement instance before quitting; if launching fails, the current app stays open and displays an error.
+
+## Clipboard text insertion
+
+`ClipboardTextInserter.swift` provides `try await inserter.insert(text)` for arbitrary Unicode or multiline text. It backs up clipboard contents (including available rich-text representations), writes the supplied text, waits **111 ms**, posts **⌘V**, waits another **111 ms**, and restores the backup. Its synthetic Paste shortcut uses Command alone, even if a physical Shift key is still held. Calls are serialized so repeated shortcuts do not corrupt the backup.
+
+If another app or the user copies new content during the operation, the helper keeps that newer clipboard rather than overwriting it. It aborts before pasting if focus switches to another app, permission is revoked, or the clipboard changes. Cancellation and normal app termination restore any clipboard contents still owned by the helper.
+
+The destination must have an editable field that accepts Paste. The delays allow time for the destination to read the clipboard; macOS does not confirm whether another app accepted the paste, and some apps may need a longer delay.
 
 ## Run in Xcode
 
@@ -33,6 +45,6 @@ make clean  # Clean build products
 
 Build and launch an optimized Release version with `make run CONFIGURATION=Release`.
 
-`TalkToPromptApp.swift` defines the single-window lifecycle, `ContentView.swift` defines the UI and permission guidance, `ShiftMonitor.swift` manages permission and global modifier monitoring, and `BeepPlayer.swift` generates and plays the tones using AVFoundation. SwiftUI's `Window` scene automatically quits the app when its sole window closes.
+`TalkToPromptApp.swift` defines the single-window lifecycle, `ContentView.swift` defines the UI and permission guidance, `ShiftMonitor.swift` manages permission and global modifier monitoring, `BeepPlayer.swift` generates and plays the tones using AVFoundation, and `ClipboardTextInserter.swift` handles clipboard-backed pasting. SwiftUI's `Window` scene automatically quits the app when its sole window closes.
 
 During development, keep the bundle identifier and build location stable. macOS ties privacy grants to the app's identity; rebuilding an ad hoc signed app can require enabling access again. Use a consistent Apple development signing identity for more stable permission testing.

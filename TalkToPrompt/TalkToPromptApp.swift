@@ -8,7 +8,8 @@ struct TalkToPromptApp: App {
             ContentView()
                 .background(WindowButtonConfiguration())
         }
-        .defaultSize(width: 480, height: 360)
+        .defaultSize(width: 720, height: 480)
+        .windowResizability(.contentSize)
     }
 }
 
@@ -22,6 +23,7 @@ private struct WindowButtonConfiguration: NSViewRepresentable {
     final class WindowView: NSView {
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
+            window?.styleMask.remove(.resizable)
             window?.standardWindowButton(.zoomButton)?.isEnabled = false
         }
     }

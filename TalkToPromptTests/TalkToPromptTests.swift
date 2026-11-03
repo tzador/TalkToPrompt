@@ -3,6 +3,84 @@ import XCTest
 @testable import TalkToPrompt
 
 final class TalkToPromptTests: XCTestCase {
+    @MainActor
+    func testAccessibilitySettingsReturnOffersOneRestartEvenWithCachedDenial() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString))
+        var openedPanes: [String] = []
+        let monitor = ShiftMonitor(
+            defaults: defaults, checkPermission: { false }, requestAccess: { false },
+            checkEventPostingPermission: { false }, requestEventPostingAccess: { false },
+            openSettings: { openedPanes.append($0) },
+            frontmostBundleIdentifier: { Bundle.main.bundleIdentifier }
+        )
+        defer { monitor.stop() }
+        monitor.start()
+        monitor.openAccessibilitySettings()
+        XCTAssertEqual(openedPanes, ["Privacy_Accessibility"])
+        XCTAssertFalse(monitor.showRestartConfirmation)
+        monitor.applicationActivated(bundleIdentifier: "com.apple.systempreferences")
+        monitor.applicationActivated(bundleIdentifier: Bundle.main.bundleIdentifier)
+        XCTAssertTrue(monitor.showRestartConfirmation)
+        XCTAssertFalse(monitor.hasEventPostingPermission)
+        monitor.showRestartConfirmation = false
+        monitor.applicationActivated(bundleIdentifier: Bundle.main.bundleIdentifier)
+        monitor.refreshPermission()
+        XCTAssertFalse(monitor.showRestartConfirmation)
+    }
+
+    @MainActor
+    func testAlreadyGrantedAccessibilityDoesNotRequestAnotherRestart() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString))
+        let monitor = ShiftMonitor(
+            defaults: defaults, checkPermission: { false }, requestAccess: { false },
+            checkEventPostingPermission: { true },
+            requestEventPostingAccess: { XCTFail("Already granted"); return true },
+            openSettings: { _ in }, frontmostBundleIdentifier: { Bundle.main.bundleIdentifier }
+        )
+        defer { monitor.stop() }
+        monitor.start()
+        monitor.openAccessibilitySettings()
+        monitor.applicationActivated(bundleIdentifier: "com.apple.systempreferences")
+        monitor.applicationActivated(bundleIdentifier: Bundle.main.bundleIdentifier)
+        XCTAssertFalse(monitor.showRestartConfirmation)
+    }
+
+    @MainActor
+    func testRestartLaunchesReplacementBeforeQuittingAndDoesNotRepeat() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString))
+        var actions: [String] = []
+        let monitor = ShiftMonitor(
+            defaults: defaults, checkPermission: { false }, requestAccess: { false },
+            checkEventPostingPermission: { false }, requestEventPostingAccess: { false },
+            launchNewInstance: { actions.append("launch") },
+            terminateCurrentInstance: { actions.append("quit") }
+        )
+        defer { monitor.stop() }
+        monitor.start()
+        await monitor.restart()
+        await monitor.restart()
+        XCTAssertEqual(actions, ["launch", "quit"])
+        XCTAssertTrue(monitor.isRestarting)
+        XCTAssertEqual(monitor.status, .checking)
+    }
+
+    @MainActor
+    func testFailedRestartKeepsCurrentAppRunningAndReportsError() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString))
+        let monitor = ShiftMonitor(
+            defaults: defaults, checkPermission: { false }, requestAccess: { false },
+            checkEventPostingPermission: { false }, requestEventPostingAccess: { false },
+            launchNewInstance: { throw NSError(domain: "RestartTest", code: 1) },
+            terminateCurrentInstance: { XCTFail("Must not quit if launching fails") }
+        )
+        defer { monitor.stop() }
+        monitor.start()
+        await monitor.restart()
+        XCTAssertFalse(monitor.isRestarting)
+        XCTAssertNotNil(monitor.restartError)
+        XCTAssertEqual(monitor.status, .needsPermission)
+    }
+
     func testChordEdgesInEitherPressAndReleaseOrder() {
         for firstIsLeft in [true, false] {
             for releaseLeftFirst in [true, false] {
@@ -58,10 +136,16 @@ final class TalkToPromptTests: XCTestCase {
     func testStartupExplainsMissingPermissionWithoutRequestingIt() throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString))
         var requests = 0
-        let monitor = ShiftMonitor(defaults: defaults, checkPermission: { false }, requestAccess: {
-            requests += 1
-            return false
-        })
+        let monitor = ShiftMonitor(
+            defaults: defaults,
+            checkPermission: { false },
+            requestAccess: {
+                requests += 1
+                return false
+            },
+            checkEventPostingPermission: { true },
+            requestEventPostingAccess: { XCTFail("Posting permission is already granted"); return true }
+        )
         defer { monitor.stop() }
         monitor.start()
         XCTAssertEqual(monitor.status, .needsPermission)
@@ -79,5 +163,66 @@ final class TalkToPromptTests: XCTestCase {
         monitor.start()
         XCTAssertFalse(monitor.showPermissionExplanation)
         XCTAssertEqual(requests, 1)
+    }
+
+    @MainActor
+    func testMissingPermissionsAreRequestedIndependentlyWithoutRepeatedPrompts() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString))
+        var inputRequests = 0
+        var postingRequests = 0
+        let monitor = ShiftMonitor(
+            defaults: defaults,
+            checkPermission: { false },
+            requestAccess: { inputRequests += 1; return false },
+            checkEventPostingPermission: { false },
+            requestEventPostingAccess: { postingRequests += 1; return false }
+        )
+        defer { monitor.stop() }
+        monitor.start()
+        XCTAssertTrue(monitor.showPermissionExplanation)
+        XCTAssertFalse(monitor.hasEventPostingPermission)
+        XCTAssertEqual(inputRequests, 0)
+        XCTAssertEqual(postingRequests, 0)
+
+        monitor.requestEventPostingPermission()
+        XCTAssertEqual(postingRequests, 1)
+        XCTAssertEqual(inputRequests, 0)
+        XCTAssertEqual(monitor.status, .needsPermission)
+        XCTAssertFalse(monitor.showPermissionExplanation)
+        monitor.refreshPermission()
+        XCTAssertFalse(monitor.showPermissionExplanation)
+        XCTAssertEqual(postingRequests, 1)
+
+        monitor.requestPermission()
+        XCTAssertEqual(inputRequests, 1)
+        XCTAssertEqual(postingRequests, 1)
+        monitor.stop()
+        monitor.start()
+        XCTAssertFalse(monitor.showPermissionExplanation)
+        XCTAssertEqual(inputRequests, 1)
+        XCTAssertEqual(postingRequests, 1)
+    }
+
+    @MainActor
+    func testPostingPermissionGrantAndRevocationAreRechecked() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString))
+        var postingGranted = false
+        let monitor = ShiftMonitor(
+            defaults: defaults,
+            checkPermission: { false },
+            requestAccess: { XCTFail("Input permission should not be requested"); return false },
+            checkEventPostingPermission: { postingGranted },
+            requestEventPostingAccess: { postingGranted = true; return true }
+        )
+        defer { monitor.stop() }
+        monitor.start()
+        monitor.requestEventPostingPermission()
+        XCTAssertTrue(monitor.hasEventPostingPermission)
+        XCTAssertEqual(monitor.status, .needsPermission)
+        postingGranted = false
+        monitor.refreshPermission()
+        XCTAssertFalse(monitor.hasEventPostingPermission)
+        XCTAssertEqual(monitor.status, .needsPermission)
+        XCTAssertFalse(monitor.showPermissionExplanation)
     }
 }
