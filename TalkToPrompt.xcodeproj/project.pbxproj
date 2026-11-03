@@ -10,7 +10,13 @@
 		A00000000000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000012 /* ContentView.swift */; };
 		A00000000000000000000003 /* BeepPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000013 /* BeepPlayer.swift */; };
 		A00000000000000000000004 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000014 /* Assets.xcassets */; };
+		A00000000000000000000005 /* ShiftMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000016 /* ShiftMonitor.swift */; };
+		B00000000000000000000001 /* TalkToPromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000011 /* TalkToPromptTests.swift */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+        B00000000000000000000090 = {isa = PBXContainerItemProxy; containerPortal = A00000000000000000000050; proxyType = 1; remoteGlobalIDString = A00000000000000000000040; remoteInfo = TalkToPrompt; };
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		A00000000000000000000011 /* TalkToPromptApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TalkToPromptApp.swift; sourceTree = "<group>"; };
@@ -18,6 +24,9 @@
 		A00000000000000000000013 /* BeepPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeepPlayer.swift; sourceTree = "<group>"; };
 		A00000000000000000000014 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A00000000000000000000015 /* TalkToPrompt.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TalkToPrompt.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A00000000000000000000016 /* ShiftMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShiftMonitor.swift; sourceTree = "<group>"; };
+		B00000000000000000000011 /* TalkToPromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TalkToPromptTests.swift; sourceTree = "<group>"; };
+		B00000000000000000000012 /* TalkToPromptTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TalkToPromptTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -27,16 +36,17 @@
 /* Begin PBXGroup section */
 		A00000000000000000000030 = {
 			isa = PBXGroup;
-			children = (A00000000000000000000031 /* TalkToPrompt */, A00000000000000000000032 /* Products */);
+			children = (A00000000000000000000031 /* TalkToPrompt */, B00000000000000000000030 /* TalkToPromptTests */, A00000000000000000000032 /* Products */);
 			sourceTree = "<group>";
 		};
 		A00000000000000000000031 /* TalkToPrompt */ = {
 			isa = PBXGroup;
-			children = (A00000000000000000000011 /* TalkToPromptApp.swift */, A00000000000000000000012 /* ContentView.swift */, A00000000000000000000013 /* BeepPlayer.swift */, A00000000000000000000014 /* Assets.xcassets */);
+			children = (A00000000000000000000011 /* TalkToPromptApp.swift */, A00000000000000000000012 /* ContentView.swift */, A00000000000000000000013 /* BeepPlayer.swift */, A00000000000000000000016 /* ShiftMonitor.swift */, A00000000000000000000014 /* Assets.xcassets */);
 			path = TalkToPrompt;
 			sourceTree = "<group>";
 		};
-		A00000000000000000000032 /* Products */ = {isa = PBXGroup; children = (A00000000000000000000015 /* TalkToPrompt.app */); name = Products; sourceTree = "<group>"; };
+		A00000000000000000000032 /* Products */ = {isa = PBXGroup; children = (A00000000000000000000015 /* TalkToPrompt.app */, B00000000000000000000012 /* TalkToPromptTests.xctest */); name = Products; sourceTree = "<group>"; };
+		B00000000000000000000030 = {isa = PBXGroup; children = (B00000000000000000000011); path = TalkToPromptTests; sourceTree = "<group>"; };
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -51,6 +61,17 @@
 			productReference = A00000000000000000000015 /* TalkToPrompt.app */;
 			productType = "com.apple.product-type.application";
 		};
+        B00000000000000000000040 /* TalkToPromptTests */ = {
+            isa = PBXNativeTarget;
+            buildConfigurationList = B00000000000000000000060;
+            buildPhases = (B00000000000000000000021);
+            buildRules = ();
+            dependencies = (B00000000000000000000091);
+            name = TalkToPromptTests;
+            productName = TalkToPromptTests;
+            productReference = B00000000000000000000012;
+            productType = "com.apple.product-type.bundle.unit-test";
+        };
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -71,7 +92,7 @@
 			productRefGroup = A00000000000000000000032 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
-			targets = (A00000000000000000000040 /* TalkToPrompt */);
+			targets = (A00000000000000000000040 /* TalkToPrompt */, B00000000000000000000040 /* TalkToPromptTests */);
 		};
 /* End PBXProject section */
 
@@ -80,8 +101,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		A00000000000000000000021 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000001 /* TalkToPromptApp.swift in Sources */, A00000000000000000000002 /* ContentView.swift in Sources */, A00000000000000000000003 /* BeepPlayer.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
+		A00000000000000000000021 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000001 /* TalkToPromptApp.swift in Sources */, A00000000000000000000002 /* ContentView.swift in Sources */, A00000000000000000000003 /* BeepPlayer.swift in Sources */, A00000000000000000000005 /* ShiftMonitor.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
+		B00000000000000000000021 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B00000000000000000000001); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+        B00000000000000000000091 = {isa = PBXTargetDependency; target = A00000000000000000000040; targetProxy = B00000000000000000000090; };
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		A00000000000000000000070 /* Debug */ = {
@@ -165,11 +191,40 @@
 			};
 			name = Release;
 		};
+        B00000000000000000000070 /* Debug */ = {
+            isa = XCBuildConfiguration;
+            buildSettings = {
+                BUNDLE_LOADER = "$(TEST_HOST)";
+                CODE_SIGN_IDENTITY = "-";
+                CODE_SIGN_STYLE = Automatic;
+                GENERATE_INFOPLIST_FILE = YES;
+                PRODUCT_BUNDLE_IDENTIFIER = com.talktoprompt.TalkToPromptTests;
+                PRODUCT_NAME = "$(TARGET_NAME)";
+                SWIFT_VERSION = 5.0;
+                TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TalkToPrompt.app/Contents/MacOS/TalkToPrompt";
+            };
+            name = Debug;
+        };
+        B00000000000000000000071 /* Release */ = {
+            isa = XCBuildConfiguration;
+            buildSettings = {
+                BUNDLE_LOADER = "$(TEST_HOST)";
+                CODE_SIGN_IDENTITY = "-";
+                CODE_SIGN_STYLE = Automatic;
+                GENERATE_INFOPLIST_FILE = YES;
+                PRODUCT_BUNDLE_IDENTIFIER = com.talktoprompt.TalkToPromptTests;
+                PRODUCT_NAME = "$(TARGET_NAME)";
+                SWIFT_VERSION = 5.0;
+                TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TalkToPrompt.app/Contents/MacOS/TalkToPrompt";
+            };
+            name = Release;
+        };
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
 		A00000000000000000000060 /* Build configuration list for PBXProject "TalkToPrompt" */ = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000070 /* Debug */, A00000000000000000000071 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 		A00000000000000000000061 /* Build configuration list for PBXNativeTarget "TalkToPrompt" */ = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000072 /* Debug */, A00000000000000000000073 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		B00000000000000000000060 = {isa = XCConfigurationList; buildConfigurations = (B00000000000000000000070, B00000000000000000000071); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 /* End XCConfigurationList section */
 	};
 	rootObject = A00000000000000000000050 /* Project object */;

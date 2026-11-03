@@ -2,17 +2,24 @@ import AVFoundation
 
 @MainActor
 final class BeepPlayer {
-    private var player: AVAudioPlayer?
+    enum Tone: Double, CaseIterable {
+        case pressed = 440
+        case released = 880
+    }
 
-    func play() throws {
-        if player == nil {
-            player = try AVAudioPlayer(data: Self.makeWaveData())
-            player?.prepareToPlay()
+    private var players: [Tone: AVAudioPlayer] = [:]
+
+    func play(_ tone: Tone = .pressed) throws {
+        if players[tone] == nil {
+            let player = try AVAudioPlayer(data: Self.makeWaveData(frequency: tone.rawValue))
+            player.prepareToPlay()
+            players[tone] = player
         }
 
-        // Repeated presses restart the tone instead of layering sounds.
-        player?.currentTime = 0
-        guard player?.play() == true else {
+        // Each transition gets its own tone, even if the other tone is still playing.
+        let player = players[tone]!
+        player.currentTime = 0
+        guard player.play() else {
             throw NSError(
                 domain: "TalkToPrompt.Audio",
                 code: 1,
@@ -23,10 +30,9 @@ final class BeepPlayer {
 
     /// One second of mono, 16-bit PCM audio at 44.1 kHz.
     /// A short fade at each edge prevents clicks without changing the tone.
-    static func makeWaveData() -> Data {
+    static func makeWaveData(frequency: Double = Tone.pressed.rawValue) -> Data {
         let sampleRate = 44_100
         let sampleCount = sampleRate
-        let frequency = 440.0
         let fadeSamples = 220
         let audioByteCount = sampleCount * MemoryLayout<Int16>.size
         var data = Data()
