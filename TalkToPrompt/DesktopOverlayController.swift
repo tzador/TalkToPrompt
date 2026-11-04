@@ -205,6 +205,8 @@ final class DesktopOverlayController: VoiceSessionOverlay {
             statusLabel.font = .systemFont(ofSize: 64, weight: .bold)
             statusLabel.textColor = .black
             statusLabel.alignment = .center
+            statusLabel.maximumNumberOfLines = 0
+            statusLabel.lineBreakMode = .byWordWrapping
             statusLabel.isHidden = true
             statusLabel.translatesAutoresizingMaskIntoConstraints = false
             statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)

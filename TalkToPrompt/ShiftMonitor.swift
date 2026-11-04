@@ -32,6 +32,7 @@ final class ShiftMonitor: ObservableObject {
     @Published private(set) var hasEventPostingPermission = false
     @Published var showPermissionExplanation = false
     @Published var playbackError: String?
+    @Published var transcriptionError: String?
     @Published var showRestartConfirmation = false
     @Published var restartError: String?
     @Published private(set) var isRestarting = false
@@ -40,11 +41,18 @@ final class ShiftMonitor: ObservableObject {
 
     private let beepPlayer = BeepPlayer()
     private let desktopOverlay = DesktopOverlayController()
+    private let textInserter = ClipboardTextInserter()
     private lazy var voiceSession = VoiceSessionController(
-        microphone: microphone, overlay: desktopOverlay, player: RecordedAudioPlayer(),
+        microphone: microphone, overlay: desktopOverlay, transcriber: OpenAITranscriber(),
+        loadAPIKey: { try KeychainAPIKeyStore().load() },
+        insertText: { [weak self] text in try await self?.textInserter.insert(text) },
+        restoreClipboard: { [weak self] in _ = self?.textInserter.restorePendingClipboard() },
         onBegin: { [weak self] in self?.playBeep(.pressed) },
         onExit: { [weak self] in self?.playBeep(.released) },
-        onError: { [weak self] error in self?.playbackError = error }
+        onError: { [weak self] error in
+            self?.transcriptionError = error
+            NSApp.activate(ignoringOtherApps: true)
+        }
     )
     private var chord = ShiftChordState()
     private var eventTap: CFMachPort?

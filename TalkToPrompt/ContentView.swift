@@ -71,7 +71,7 @@ struct ContentView: View {
             get: {
                 monitor.showRestartConfirmation || monitor.playbackError != nil
                     || monitor.restartError != nil || apiKey.errorMessage != nil
-                    || monitor.microphone.errorMessage != nil
+                    || monitor.microphone.errorMessage != nil || monitor.transcriptionError != nil
             },
             set: { if !$0 { dismissAlert() } }
         )) {
@@ -85,7 +85,7 @@ struct ContentView: View {
             if monitor.showRestartConfirmation {
                 Text("If you enabled Accessibility in System Settings, restart TalkToPrompt to make sure the change takes effect.")
             } else {
-                Text(monitor.restartError ?? apiKey.errorMessage ?? monitor.microphone.errorMessage ?? monitor.playbackError ?? "The action could not be completed.")
+                Text(monitor.restartError ?? apiKey.errorMessage ?? monitor.microphone.errorMessage ?? monitor.transcriptionError ?? monitor.playbackError ?? "The action could not be completed.")
             }
         }
     }
@@ -95,12 +95,14 @@ struct ContentView: View {
         if monitor.restartError != nil { return "Unable to Restart" }
         if apiKey.errorMessage != nil { return "Unable to Access API Key" }
         if monitor.microphone.errorMessage != nil { return "Unable to Record Audio" }
+        if monitor.transcriptionError != nil { return "Unable to Transcribe or Paste" }
         return "Unable to Play Audio"
     }
 
     private func dismissAlert() {
         monitor.showRestartConfirmation = false
         monitor.playbackError = nil
+        monitor.transcriptionError = nil
         monitor.restartError = nil
         apiKey.errorMessage = nil
         monitor.microphone.errorMessage = nil
