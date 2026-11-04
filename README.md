@@ -2,7 +2,7 @@
 
 A native macOS SwiftUI app with a single window and a centered **Play Beep** button. Pressing it plays a 440 Hz sine wave for one second. Closing the window quits the app and stops keyboard monitoring.
 
-The window has a fixed 720 × 720 point content area and cannot be resized. A persistent top status area shows **Input Monitoring** and **Accessibility** as stacked, full-width rounded bubbles, with one **Open System Settings** button for each permission. Each bubble uses orange text and an orange outline when permission is missing, or green when granted. macOS measures window layout in points; Retina displays render these at their display scale.
+The window has a fixed 720 × 720 point content area and cannot be resized. A persistent top status area shows **Input Monitoring**, **Accessibility**, and **OpenAI API Key** as stacked, full-width rounded bubbles, with one **Open System Settings** button for each permission and an **Enter** or **Clear** button for the API key. Each bubble uses orange text and an orange outline when permission is missing, or green when granted. macOS measures window layout in points; Retina displays render these at their display scale.
 
 While the app is running, holding **left Shift + right Shift** plays a one-second **440 Hz** sine wave. Releasing either Shift plays a one-second **880 Hz** sine wave and pastes **hello, world** into the currently focused app when Accessibility permission is granted. Either press order works; keeping the keys held does not repeat the sound. The two tones can overlap if you release quickly, so each can finish its full second. Repeating the same tone restarts it.
 
@@ -23,6 +23,12 @@ Event-posting permission is shown under **System Settings → Privacy & Security
 If another app or the user copies new content during the operation, the helper keeps that newer clipboard rather than overwriting it. It aborts before pasting if focus switches to another app, permission is revoked, or the clipboard changes. Cancellation and normal app termination restore any clipboard contents still owned by the helper.
 
 The destination must have an editable field that accepts Paste. The delays allow time for the destination to read the clipboard; macOS does not confirm whether another app accepted the paste, and some apps may need a longer delay.
+
+## OpenAI API key
+
+The third status bubble shows **Not provided** or **Provided sk-...TqUA**, using only the key’s first three and last four characters. It is orange when missing and green when provided.
+
+Choose **Enter** to open a secure input dialog. **OK** stores the key in the macOS Keychain as a generic-password item with account **OPENAI_API_KEY** and the app’s bundle identifier as its service. **Cancel** closes the dialog without saving. **Clear** deletes only that Keychain item. The key is loaded at startup and is never written to a preferences file or repository configuration.
 
 ## Run in Xcode
 

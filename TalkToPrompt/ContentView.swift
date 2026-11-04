@@ -2,6 +2,8 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var monitor = ShiftMonitor()
+    @StateObject private var apiKey = APIKeyModel()
+    @State private var showAPIKeyEntry = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -13,10 +15,13 @@ struct ContentView: View {
             .accessibilityHint("Plays a one-second pure tone")
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            permissionStatusBar
+            statusPanel
         }
         .frame(width: 720, height: 720)
-        .onAppear { monitor.start() }
+        .onAppear {
+            monitor.start()
+            apiKey.load()
+        }
         .onDisappear { monitor.stop() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
@@ -59,10 +64,19 @@ struct ContentView: View {
             .padding(28)
             .frame(width: 440)
         }
+        .sheet(isPresented: $showAPIKeyEntry) {
+            APIKeyEntrySheet(
+                onSave: { key in
+                    try apiKey.save(key)
+                    showAPIKeyEntry = false
+                },
+                onCancel: { showAPIKeyEntry = false }
+            )
+        }
         .alert(alertTitle, isPresented: Binding(
             get: {
                 monitor.showRestartConfirmation || monitor.playbackError != nil
-                    || monitor.insertionError != nil || monitor.restartError != nil
+                    || monitor.insertionError != nil || monitor.restartError != nil || apiKey.errorMessage != nil
             },
             set: { if !$0 { dismissAlert() } }
         )) {
@@ -76,7 +90,7 @@ struct ContentView: View {
             if monitor.showRestartConfirmation {
                 Text("If you enabled Accessibility in System Settings, restart TalkToPrompt to make sure the change takes effect.")
             } else {
-                Text(monitor.restartError ?? monitor.insertionError ?? monitor.playbackError ?? "The action could not be completed.")
+                Text(monitor.restartError ?? apiKey.errorMessage ?? monitor.insertionError ?? monitor.playbackError ?? "The action could not be completed.")
             }
         }
     }
@@ -84,6 +98,7 @@ struct ContentView: View {
     private var alertTitle: String {
         if monitor.showRestartConfirmation { return "Restart TalkToPrompt?" }
         if monitor.restartError != nil { return "Unable to Restart" }
+        if apiKey.errorMessage != nil { return "Unable to Access API Key" }
         return monitor.insertionError == nil ? "Unable to Play Beep" : "Unable to Paste Text"
     }
 
@@ -92,9 +107,10 @@ struct ContentView: View {
         monitor.playbackError = nil
         monitor.insertionError = nil
         monitor.restartError = nil
+        apiKey.errorMessage = nil
     }
 
-    private var permissionStatusBar: some View {
+    private var statusPanel: some View {
         VStack(spacing: 0) {
             VStack(spacing: 12) {
                 permissionStatus(
@@ -107,13 +123,26 @@ struct ContentView: View {
                     enabled: monitor.hasEventPostingPermission,
                     openSettings: { monitor.openAccessibilitySettings() }
                 )
+                statusBubble(
+                    title: "OpenAI API Key",
+                    status: apiKey.status,
+                    color: apiKey.isProvided ? .green : .orange,
+                    icon: "key.fill",
+                    buttonTitle: apiKey.isProvided ? "Clear" : "Enter"
+                ) {
+                    if apiKey.isProvided {
+                        apiKey.clear()
+                    } else {
+                        showAPIKeyEntry = true
+                    }
+                }
             }
             .padding(16)
             .background(.bar)
             Divider()
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Permission status")
+        .accessibilityLabel("App status")
     }
 
     private func permissionStatus(
@@ -125,9 +154,28 @@ struct ContentView: View {
         let status = checking ? "Checking permission…" : (enabled ? "Permission granted" : "Permission not granted")
         let color: Color = checking ? .secondary : (enabled ? .green : .orange)
 
+        return statusBubble(
+            title: title, status: status, color: color,
+            icon: checking ? "circle.dotted" : (enabled ? "checkmark.circle.fill" : "exclamationmark.circle.fill"),
+            buttonTitle: "Open System Settings", action: openSettings
+        )
+        .help(title == "Input Monitoring" && monitor.status == .unavailable
+              ? "Permission is enabled, but keyboard monitoring could not start. Quit and reopen the app."
+              : "\(title): \(status)")
+    }
+
+    private func statusBubble(
+        title: String,
+        status: String,
+        color: Color,
+        icon: String,
+        buttonTitle: String,
+        action: @escaping () -> Void
+    ) -> some View {
         return HStack(spacing: 16) {
             HStack(spacing: 8) {
-                Image(systemName: checking ? "circle.dotted" : (enabled ? "checkmark.circle.fill" : "exclamationmark.circle.fill"))
+                Image(systemName: icon)
+                    .frame(width: 16)
                     .accessibilityHidden(true)
                 Text(title)
                     .font(.callout.weight(.medium))
@@ -135,16 +183,17 @@ struct ContentView: View {
                 Text(status).font(.callout)
             }
             Spacer(minLength: 8)
-            Button(action: openSettings) {
-                Text("Open System Settings")
+            Button(action: action) {
+                Text(buttonTitle)
                     .font(.callout.weight(.semibold))
                     .foregroundStyle(.black.opacity(0.85))
                     .padding(.horizontal, 14)
                     .padding(.vertical, 9)
+                    .frame(minWidth: 130)
                     .background(color, in: RoundedRectangle(cornerRadius: 8))
             }
             .buttonStyle(.plain)
-            .help("Open \(title) settings")
+            .accessibilityLabel("\(buttonTitle)\(buttonTitle == "Open System Settings" ? " → \(title)" : " API Key")")
         }
         .foregroundStyle(color)
         .tint(color)
@@ -156,9 +205,6 @@ struct ContentView: View {
             RoundedRectangle(cornerRadius: 14)
                 .strokeBorder(color, lineWidth: 1)
         }
-        .help(title == "Input Monitoring" && monitor.status == .unavailable
-              ? "Permission is enabled, but keyboard monitoring could not start. Quit and reopen the app."
-              : "\(title): \(status)")
     }
 
 }
