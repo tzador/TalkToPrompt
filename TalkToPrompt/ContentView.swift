@@ -10,7 +10,8 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             statusPanel
-            Spacer()
+            usageGuide
+            Spacer(minLength: 0)
         }
         .frame(width: 720, height: 720)
         .onAppear {
@@ -175,6 +176,44 @@ struct ContentView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("App status")
+    }
+
+    private var usageGuide: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Turn your voice into text")
+                .font(.title2.bold())
+            Text("Capture a thought, draft a message, or write a prompt without breaking your flow. TalkToPrompt turns your speech into text in the app you’re using.")
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            VStack(alignment: .leading, spacing: 10) {
+                usageStep("1", title: "Choose where to write.", detail: "Click a text field in any app.")
+                usageStep("2", title: "Hold both Shift keys and speak.", detail: "The overlay shows Listening… once recording starts.")
+                usageStep("3", title: "Release either Shift key.", detail: "Wait for transcription; your words are pasted into the active app.")
+            }
+
+            Text("Grant the permissions and add your API key above to get started. Audio is sent to OpenAI for transcription using your key.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .font(.callout)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 28)
+        .padding(.vertical, 22)
+    }
+
+    private func usageStep(_ number: String, title: String, detail: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(number)
+                .font(.caption.weight(.semibold).monospacedDigit())
+                .frame(width: 22, height: 22)
+                .background(.quaternary, in: Circle())
+                .accessibilityHidden(true)
+            (Text(title).bold() + Text(" " + detail).foregroundColor(.secondary))
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 2)
+        }
     }
 
     private func permissionStatus(
