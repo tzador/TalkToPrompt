@@ -108,9 +108,14 @@ final class MicrophoneRecordingSession: ObservableObject {
         return task
     }
 
-    func openSettings() async {
+    /// Requests consent without opening the capture device or starting a recording.
+    func requestPermission() async {
         if checkAuthorization() == .notDetermined { _ = await requestAccess() }
         refreshPermission()
+    }
+
+    func openSettings() async {
+        await requestPermission()
         let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!
         if !NSWorkspace.shared.open(url) {
             NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/System Settings.app"))

@@ -19,12 +19,12 @@ final class DesktopOverlayControllerTests: XCTestCase {
         }
         XCTAssertEqual(firstDotColor(), .clear)
         for _ in 0..<100 {
-            if firstDotColor() == .black { break }
+            if firstDotColor() == .white { break }
             try await Task.sleep(for: .milliseconds(10))
         }
-        XCTAssertEqual(firstDotColor(), .black)
+        XCTAssertEqual(firstDotColor(), .white)
         overlay.setMessage("Listening... 1 seconds")
-        XCTAssertEqual(firstDotColor(), .black)
+        XCTAssertEqual(firstDotColor(), .white)
         XCTAssertEqual(view.counterLabel.stringValue, "1 seconds")
         view.layoutSubtreeIfNeeded()
         XCTAssertEqual(view.statusLabel.frame, initialFrame)
@@ -48,7 +48,7 @@ final class DesktopOverlayControllerTests: XCTestCase {
             XCTAssertEqual(view.counterLabel.stringValue, "4 seconds")
             XCTAssertFalse(view.counterLabel.isHidden)
             XCTAssertEqual(view.counterLabel.font?.pointSize, 28)
-            XCTAssertEqual(view.counterLabel.textColor, NSColor.black.withAlphaComponent(0.55))
+            XCTAssertEqual(view.counterLabel.textColor, NSColor.white.withAlphaComponent(0.7))
             let font = try XCTUnwrap(view.counterLabel.font)
             XCTAssertFalse(NSFontManager.shared.traits(of: font).contains(.boldFontMask))
             view.layoutSubtreeIfNeeded()
@@ -74,7 +74,7 @@ final class DesktopOverlayControllerTests: XCTestCase {
     }
 
     @MainActor
-    func testListeningCaptionIsLargeBlackAndCenteredOnlyWhenRequested() throws {
+    func testListeningCaptionIsLargeWhiteAndCenteredOnlyWhenRequested() throws {
         let overlay = DesktopOverlayController(screenFrames: { [NSRect(x: 0, y: 0, width: 800, height: 600)] })
         defer { overlay.stop() }
         overlay.start()
@@ -84,7 +84,7 @@ final class DesktopOverlayControllerTests: XCTestCase {
         view.layoutSubtreeIfNeeded()
         XCTAssertEqual(view.statusLabel.stringValue, "Listening...")
         XCTAssertEqual(view.statusLabel.font?.pointSize, 64)
-        XCTAssertEqual(view.statusLabel.textColor, .black)
+        XCTAssertEqual(view.statusLabel.textColor, .white)
         XCTAssertFalse(view.statusLabel.isHidden)
         XCTAssertEqual(view.statusLabel.frame.midX, view.bounds.midX, accuracy: 1)
         XCTAssertEqual(view.statusLabel.frame.midY, view.bounds.midY, accuracy: 1)
@@ -147,7 +147,7 @@ final class DesktopOverlayControllerTests: XCTestCase {
     }
 
     @MainActor
-    func testShowFadesWhiteToEightyPercentOver222Milliseconds() throws {
+    func testShowFadesBlackToTwentyFivePercentWithoutBlurOver222Milliseconds() throws {
         let overlay = DesktopOverlayController(screenFrames: { [NSRect(x: 0, y: 0, width: 160, height: 120)] })
         defer { overlay.stop() }
         let keyWindow = NSApp.keyWindow
@@ -165,15 +165,13 @@ final class DesktopOverlayControllerTests: XCTestCase {
         XCTAssertEqual(animation.fromValue as? Float, 0)
         XCTAssertEqual(animation.toValue as? Float, 1)
         let content = try XCTUnwrap(panel.contentView as? DesktopOverlayController.OverlayContentView)
-        XCTAssertEqual(content.backdrop.blendingMode, .behindWindow)
-        XCTAssertEqual(content.backdrop.material, .fullScreenUI)
-        XCTAssertEqual(content.backdrop.state, .active)
-        XCTAssertEqual(content.whiteTint.layer?.opacity, 0.8)
-        let background = try XCTUnwrap(content.whiteTint.layer?.backgroundColor)
+        XCTAssertFalse(content.subviews.contains { $0 is NSVisualEffectView })
+        XCTAssertEqual(content.backgroundTint.layer?.opacity, 0.25)
+        let background = try XCTUnwrap(content.backgroundTint.layer?.backgroundColor)
         let color = try XCTUnwrap(NSColor(cgColor: background)?.usingColorSpace(.deviceRGB))
-        XCTAssertEqual(color.redComponent, 1)
-        XCTAssertEqual(color.greenComponent, 1)
-        XCTAssertEqual(color.blueComponent, 1)
+        XCTAssertEqual(color.redComponent, 0)
+        XCTAssertEqual(color.greenComponent, 0)
+        XCTAssertEqual(color.blueComponent, 0)
         XCTAssertEqual(color.alphaComponent, 1)
     }
 

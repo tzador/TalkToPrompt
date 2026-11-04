@@ -36,6 +36,11 @@ final class ShiftMonitor: ObservableObject {
     @Published var showRestartConfirmation = false
     @Published var restartError: String?
     @Published private(set) var isRestarting = false
+    var allowsDictation = true {
+        didSet {
+            if oldValue && !allowsDictation { voiceSession.stopImmediately() }
+        }
+    }
     let microphone: MicrophoneRecordingSession
     private var microphoneObservation: AnyCancellable?
 
@@ -63,6 +68,12 @@ final class ShiftMonitor: ObservableObject {
     private var activationObserver: NSObjectProtocol?
     private var awaitingAccessibilitySettingsReturn = false
     private var visitedAccessibilitySettings = false
+    private var awaitingInputSettingsReturn = false
+    private var visitedInputSettings = false
+    private var previousInputPermission: Bool?
+    private var previousPostingPermission: Bool?
+    @Published private(set) var restartPermissionName = "Keyboard permissions"
+    private var explainsStartupPermissions = true
     private var started = false
     private let defaults: UserDefaults
     private let checkPermission: () -> Bool
@@ -117,16 +128,17 @@ final class ShiftMonitor: ObservableObject {
         }
     }
 
-    func start() {
+    func start(showPermissionExplanation: Bool = true) {
         guard !started else { return }
+        explainsStartupPermissions = showPermissionExplanation
         started = true
         refreshPermission()
         let explainInputMonitoring = status == .needsPermission
             && !defaults.bool(forKey: Self.requestedPermissionKey)
         let explainEventPosting = !hasEventPostingPermission
             && !defaults.bool(forKey: Self.requestedEventPostingKey)
-        if explainInputMonitoring || explainEventPosting {
-            showPermissionExplanation = true
+        if explainsStartupPermissions && (explainInputMonitoring || explainEventPosting) {
+            self.showPermissionExplanation = true
         }
 
         // Also notice revocation while another app is in focus.
@@ -166,6 +178,10 @@ final class ShiftMonitor: ObservableObject {
         activationObserver = nil
         awaitingAccessibilitySettingsReturn = false
         visitedAccessibilitySettings = false
+        awaitingInputSettingsReturn = false
+        visitedInputSettings = false
+        previousInputPermission = nil
+        previousPostingPermission = nil
         stopTap()
         desktopOverlay.stop()
         status = .checking
@@ -181,8 +197,13 @@ final class ShiftMonitor: ObservableObject {
     func openInputMonitoringSettings() {
         // Register the app with macOS if needed, then always open Settings,
         // including when the system no longer displays another consent prompt.
-        if !checkPermission() { requestPermission() }
+        if !checkPermission() {
+            awaitingInputSettingsReturn = true
+            visitedInputSettings = false
+            requestPermission()
+        }
         openPrivacySettings("Privacy_ListenEvent")
+        applicationActivated(bundleIdentifier: frontmostBundleIdentifier())
     }
 
     func requestEventPostingPermission() {
@@ -194,9 +215,9 @@ final class ShiftMonitor: ObservableObject {
 
     func openAccessibilitySettings() {
         if !checkEventPostingPermission() {
-            requestEventPostingPermission()
             awaitingAccessibilitySettingsReturn = true
             visitedAccessibilitySettings = false
+            requestEventPostingPermission()
         }
         openPrivacySettings("Privacy_Accessibility")
         // Settings may already have been frontmost when its button was clicked.
@@ -209,8 +230,9 @@ final class ShiftMonitor: ObservableObject {
 
     func applicationActivated(bundleIdentifier: String?) {
         guard started else { return }
-        if bundleIdentifier == "com.apple.systempreferences" && awaitingAccessibilitySettingsReturn {
-            visitedAccessibilitySettings = true
+        if bundleIdentifier == "com.apple.systempreferences" {
+            if awaitingAccessibilitySettingsReturn { visitedAccessibilitySettings = true }
+            if awaitingInputSettingsReturn { visitedInputSettings = true }
         }
         guard bundleIdentifier == Bundle.main.bundleIdentifier else { return }
         refreshPermission()
@@ -219,6 +241,13 @@ final class ShiftMonitor: ObservableObject {
             visitedAccessibilitySettings = false
             // The permission check can stay false until relaunch, even after
             // the user has enabled the toggle. Offer a restart in either case.
+            restartPermissionName = "Accessibility"
+            showRestartConfirmation = true
+        }
+        if awaitingInputSettingsReturn && visitedInputSettings {
+            awaitingInputSettingsReturn = false
+            visitedInputSettings = false
+            restartPermissionName = "Input Monitoring"
             showRestartConfirmation = true
         }
     }
@@ -233,7 +262,7 @@ final class ShiftMonitor: ObservableObject {
             terminateCurrentInstance()
         } catch {
             isRestarting = false
-            start()
+            start(showPermissionExplanation: explainsStartupPermissions)
             restartError = "TalkToPrompt could not restart: \(error.localizedDescription). Quit and reopen the app manually."
         }
     }
@@ -243,8 +272,26 @@ final class ShiftMonitor: ObservableObject {
         microphone.refreshPermission()
         // Posting and listening are independent permissions. Missing posting
         // access must not prevent the Shift tones from working.
-        hasEventPostingPermission = checkEventPostingPermission()
-        guard checkPermission() else {
+        let postingGranted = checkEventPostingPermission()
+        let inputGranted = checkPermission()
+        // Notice grants even while System Settings remains frontmost. A first
+        // check on launch establishes a baseline and must never request a restart.
+        if previousPostingPermission == false && postingGranted {
+            awaitingAccessibilitySettingsReturn = false
+            visitedAccessibilitySettings = false
+            restartPermissionName = "Accessibility"
+            showRestartConfirmation = true
+        }
+        if previousInputPermission == false && inputGranted {
+            awaitingInputSettingsReturn = false
+            visitedInputSettings = false
+            restartPermissionName = "Input Monitoring"
+            showRestartConfirmation = true
+        }
+        previousPostingPermission = postingGranted
+        previousInputPermission = inputGranted
+        hasEventPostingPermission = postingGranted
+        guard inputGranted else {
             stopTap()
             status = .needsPermission
             return
@@ -303,7 +350,7 @@ final class ShiftMonitor: ObservableObject {
             rightPressed: flags & UInt64(NX_DEVICERSHIFTKEYMASK) != 0
         )
         desktopOverlay.start()
-        if chord.bothPressed { voiceSession.begin() }
+        if allowsDictation && chord.bothPressed { voiceSession.begin() }
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
         status = .monitoring
@@ -330,7 +377,7 @@ final class ShiftMonitor: ObservableObject {
                 guard let self, self.started, self.status == .monitoring,
                       self.tapGeneration == generation else { return }
                 if pressed {
-                    if self.chord.bothPressed { self.voiceSession.begin() }
+                    if self.allowsDictation && self.chord.bothPressed { self.voiceSession.begin() }
                 } else {
                     self.voiceSession.finish()
                 }

@@ -6,16 +6,13 @@ import XCTest
 final class NativeCalmViewTests: XCTestCase {
     @MainActor
     private var ready: NativeCalmState {
-        .init(inputMonitoring: .granted, accessibility: .granted, microphone: .granted,
-              apiKeyStatus: "Provided sk-...7Q2A", hasAPIKey: true,
-              loginStatus: "Enabled", loginRequested: true, loginNeedsApproval: false)
+        .init(isReady: true, apiKeyStatus: "Provided sk-...7Q2A", hasAPIKey: true)
     }
 
     @MainActor
     private func host(_ state: NativeCalmState, scheme: ColorScheme) -> (NSWindow, NSHostingView<some View>) {
         let view = NativeCalmView(state: state, actions: .init(
-            inputMonitoring: {}, accessibility: {}, microphone: {}, apiKey: {},
-            setLogin: { _ in }, loginSettings: {}
+            apiKey: {}
         )).environment(\.colorScheme, scheme)
         let host = NSHostingView(rootView: view)
         let window = NSWindow(contentRect: .zero, styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
@@ -30,32 +27,25 @@ final class NativeCalmViewTests: XCTestCase {
     @MainActor
     func testContentFitsWithoutExtraHeightAcrossSetupAndAppearanceStates() {
         var missing = ready
-        missing.inputMonitoring = .missing
-        missing.accessibility = .missing
-        missing.microphone = .missing
+        missing.isReady = false
         missing.apiKeyStatus = "Not provided"
         missing.hasAPIKey = false
-        var approval = ready
-        approval.loginStatus = "Needs approval"
-        approval.loginNeedsApproval = true
-        var checking = ready
-        checking.inputMonitoring = .checking
-        checking.accessibility = .checking
-        var restart = ready
-        restart.inputMonitoring = .restartRequired
         var unavailable = ready
         unavailable.apiKeyUnavailable = true
-        unavailable.loginUnavailable = true
-        unavailable.loginStatus = "Unavailable"
+        unavailable.isReady = false
+        var approval = ready
+        approval.loginRequested = true
+        approval.loginNeedsApproval = true
+        approval.loginStatus = "Needs approval"
         var sizes: [NSSize] = []
         for scheme in [ColorScheme.light, .dark] {
-            for state in [ready, missing, approval, checking, restart, unavailable] {
+            for state in [ready, missing, unavailable, approval] {
                 let (window, host) = host(state, scheme: scheme)
                 defer { window.close() }
                 let size = host.fittingSize
-                XCTAssertEqual(size.width, 420, accuracy: 0.5)
-                XCTAssertLessThan(size.height, 600)
-                XCTAssertGreaterThan(size.height, 380)
+                XCTAssertEqual(size.width, 380, accuracy: 0.5)
+                XCTAssertLessThan(size.height, 300)
+                XCTAssertGreaterThan(size.height, 180)
                 XCTAssertEqual(host.bounds.height, size.height, accuracy: 0.5)
                 sizes.append(size)
             }
@@ -72,11 +62,9 @@ final class NativeCalmViewTests: XCTestCase {
             for isReady in [true, false] {
                 var state = ready
                 if !isReady {
-                    state.microphone = .missing
+                    state.isReady = false
                     state.hasAPIKey = false
                     state.apiKeyStatus = "Not provided"
-                    state.loginNeedsApproval = true
-                    state.loginStatus = "Needs approval"
                 }
                 let (window, host) = host(state, scheme: scheme)
                 defer { window.close() }

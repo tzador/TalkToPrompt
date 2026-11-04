@@ -29,6 +29,43 @@ final class TalkToPromptTests: XCTestCase {
     }
 
     @MainActor
+    func testInputMonitoringSettingsReturnOffersRestartWithCachedDenial() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString))
+        let monitor = ShiftMonitor(defaults: defaults, checkPermission: { false }, requestAccess: { false },
+                                   checkEventPostingPermission: { false }, requestEventPostingAccess: { false },
+                                   openSettings: { _ in }, frontmostBundleIdentifier: { Bundle.main.bundleIdentifier })
+        defer { monitor.stop() }
+        monitor.start(showPermissionExplanation: false)
+        XCTAssertFalse(monitor.showPermissionExplanation)
+        monitor.openInputMonitoringSettings()
+        monitor.applicationActivated(bundleIdentifier: "com.apple.systempreferences")
+        monitor.applicationActivated(bundleIdentifier: Bundle.main.bundleIdentifier)
+        XCTAssertTrue(monitor.showRestartConfirmation)
+        XCTAssertEqual(monitor.restartPermissionName, "Input Monitoring")
+        monitor.showRestartConfirmation = false
+        monitor.applicationActivated(bundleIdentifier: Bundle.main.bundleIdentifier)
+        XCTAssertFalse(monitor.showRestartConfirmation)
+    }
+
+    @MainActor
+    func testGrantWhileSettingsIsFrontmostImmediatelyOffersRestart() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString))
+        var posting = false
+        let monitor = ShiftMonitor(defaults: defaults, checkPermission: { false }, requestAccess: { false },
+                                   checkEventPostingPermission: { posting }, requestEventPostingAccess: { false })
+        defer { monitor.stop() }
+        monitor.start(showPermissionExplanation: false)
+        XCTAssertFalse(monitor.showRestartConfirmation)
+        posting = true
+        monitor.refreshPermission()
+        XCTAssertTrue(monitor.showRestartConfirmation)
+        XCTAssertEqual(monitor.restartPermissionName, "Accessibility")
+        monitor.showRestartConfirmation = false
+        monitor.refreshPermission()
+        XCTAssertFalse(monitor.showRestartConfirmation)
+    }
+
+    @MainActor
     func testAlreadyGrantedAccessibilityDoesNotRequestAnotherRestart() throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString))
         let monitor = ShiftMonitor(

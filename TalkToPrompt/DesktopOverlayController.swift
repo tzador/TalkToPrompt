@@ -203,8 +203,7 @@ final class DesktopOverlayController: VoiceSessionOverlay {
     }
 
     final class OverlayContentView: NSView {
-        let backdrop = NSVisualEffectView()
-        let whiteTint = NSView()
+        let backgroundTint = NSView()
         let statusLabel = NSTextField(labelWithString: "")
         let counterLabel = NSTextField(labelWithString: "")
         private var animatesDots = false
@@ -215,26 +214,15 @@ final class DesktopOverlayController: VoiceSessionOverlay {
             wantsLayer = true
             layer?.opacity = 0
 
-            // AppKit supplies live, system-managed backdrop blur without screen
-            // capture. The container fade animates its visible strength; the
-            // public API does not expose a configurable blur radius.
-            backdrop.frame = bounds
-            backdrop.autoresizingMask = [.width, .height]
-            backdrop.material = .fullScreenUI
-            backdrop.blendingMode = .behindWindow
-            backdrop.state = .active
-            backdrop.appearance = NSAppearance(named: .aqua)
-            addSubview(backdrop)
-
-            whiteTint.frame = bounds
-            whiteTint.autoresizingMask = [.width, .height]
-            whiteTint.wantsLayer = true
-            whiteTint.layer?.backgroundColor = NSColor.white.cgColor
-            whiteTint.layer?.opacity = 0.8
-            addSubview(whiteTint)
+            backgroundTint.frame = bounds
+            backgroundTint.autoresizingMask = [.width, .height]
+            backgroundTint.wantsLayer = true
+            backgroundTint.layer?.backgroundColor = NSColor.black.cgColor
+            backgroundTint.layer?.opacity = 0.25
+            addSubview(backgroundTint)
 
             statusLabel.font = .systemFont(ofSize: 64, weight: .bold)
-            statusLabel.textColor = .black
+            statusLabel.textColor = .white
             statusLabel.alignment = .center
             statusLabel.maximumNumberOfLines = 0
             statusLabel.lineBreakMode = .byWordWrapping
@@ -243,7 +231,7 @@ final class DesktopOverlayController: VoiceSessionOverlay {
             statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             addSubview(statusLabel)
             counterLabel.font = .monospacedDigitSystemFont(ofSize: 28, weight: .regular)
-            counterLabel.textColor = NSColor.black.withAlphaComponent(0.55)
+            counterLabel.textColor = NSColor.white.withAlphaComponent(0.7)
             counterLabel.alignment = .center
             counterLabel.isHidden = true
             counterLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -285,7 +273,7 @@ final class DesktopOverlayController: VoiceSessionOverlay {
             paragraph.alignment = .center
             let attributed = NSMutableAttributedString(string: text, attributes: [
                 .font: statusLabel.font ?? NSFont.systemFont(ofSize: 64, weight: .bold),
-                .foregroundColor: NSColor.black,
+                .foregroundColor: NSColor.white,
                 .paragraphStyle: paragraph
             ])
             attributed.addAttribute(.foregroundColor, value: NSColor.clear,

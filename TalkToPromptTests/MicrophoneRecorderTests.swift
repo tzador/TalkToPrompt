@@ -145,6 +145,25 @@ final class MicrophoneRecorderTests: XCTestCase {
     }
 
     @MainActor
+    func testOnboardingPermissionRequestDoesNotStartRecording() async {
+        let capture = FakeMicrophoneCapture()
+        var authorization: AVAuthorizationStatus = .notDetermined
+        var requests = 0
+        let session = MicrophoneRecordingSession(capture: capture, checkAuthorization: { authorization }, requestAccess: {
+            requests += 1
+            authorization = .authorized
+            return true
+        })
+        await session.requestPermission()
+        await session.requestPermission()
+        XCTAssertEqual(requests, 1)
+        XCTAssertEqual(session.authorization, .authorized)
+        XCTAssertFalse(session.isRecording)
+        let starts = await capture.starts
+        XCTAssertTrue(starts.isEmpty)
+    }
+
+    @MainActor
     func testDeniedPermissionDoesNotOpenMicrophone() async {
         let capture = FakeMicrophoneCapture()
         let session = MicrophoneRecordingSession(capture: capture, checkAuthorization: { .denied }, requestAccess: { XCTFail("Do not repeatedly request denied permission"); return false })
