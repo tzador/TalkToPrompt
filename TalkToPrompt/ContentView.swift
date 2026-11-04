@@ -3,6 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @StateObject private var monitor = ShiftMonitor()
     @StateObject private var apiKey = APIKeyModel()
+    @StateObject private var launchAtLogin = LaunchAtLoginModel()
     @State private var showAPIKeyEntry = false
     @Environment(\.scenePhase) private var scenePhase
 
@@ -15,10 +16,12 @@ struct ContentView: View {
         .onAppear {
             monitor.start()
             apiKey.load()
+            launchAtLogin.refresh()
         }
         .onDisappear { monitor.stop() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
+                launchAtLogin.refresh()
                 monitor.applicationActivated(bundleIdentifier: Bundle.main.bundleIdentifier)
             }
         }
@@ -72,6 +75,7 @@ struct ContentView: View {
                 monitor.showRestartConfirmation || monitor.playbackError != nil
                     || monitor.restartError != nil || apiKey.errorMessage != nil
                     || monitor.microphone.errorMessage != nil || monitor.transcriptionError != nil
+                    || launchAtLogin.errorMessage != nil
             },
             set: { if !$0 { dismissAlert() } }
         )) {
@@ -85,7 +89,7 @@ struct ContentView: View {
             if monitor.showRestartConfirmation {
                 Text("If you enabled Accessibility in System Settings, restart TalkToPrompt to make sure the change takes effect.")
             } else {
-                Text(monitor.restartError ?? apiKey.errorMessage ?? monitor.microphone.errorMessage ?? monitor.transcriptionError ?? monitor.playbackError ?? "The action could not be completed.")
+                Text(monitor.restartError ?? launchAtLogin.errorMessage ?? apiKey.errorMessage ?? monitor.microphone.errorMessage ?? monitor.transcriptionError ?? monitor.playbackError ?? "The action could not be completed.")
             }
         }
     }
@@ -93,6 +97,7 @@ struct ContentView: View {
     private var alertTitle: String {
         if monitor.showRestartConfirmation { return "Restart TalkToPrompt?" }
         if monitor.restartError != nil { return "Unable to Restart" }
+        if launchAtLogin.errorMessage != nil { return "Unable to Change Launch at Login" }
         if apiKey.errorMessage != nil { return "Unable to Access API Key" }
         if monitor.microphone.errorMessage != nil { return "Unable to Record Audio" }
         if monitor.transcriptionError != nil { return "Unable to Transcribe or Paste" }
@@ -105,6 +110,7 @@ struct ContentView: View {
         monitor.transcriptionError = nil
         monitor.restartError = nil
         apiKey.errorMessage = nil
+        launchAtLogin.errorMessage = nil
         monitor.microphone.errorMessage = nil
     }
 
@@ -143,6 +149,25 @@ struct ContentView: View {
                         showAPIKeyEntry = true
                     }
                 }
+                bubble(
+                    title: "Launch at Login", status: launchAtLogin.statusText,
+                    color: launchAtLogin.isEnabled ? .green : .orange,
+                    icon: "power"
+                ) {
+                    if launchAtLogin.needsApproval {
+                        Button("Open System Settings") { launchAtLogin.openLoginItemsSettings() }
+                            .buttonStyle(.borderedProminent)
+                            .foregroundStyle(.black.opacity(0.85))
+                    }
+                    Toggle("Launch at Login", isOn: Binding(
+                        get: { launchAtLogin.isRequested },
+                        set: { launchAtLogin.setEnabled($0) }
+                    ))
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                    .accessibilityLabel("Launch at Login")
+                    .help("Open TalkToPrompt automatically when you sign in to your Mac")
+                }
             }
             .padding(16)
             .background(.bar)
@@ -179,17 +204,7 @@ struct ContentView: View {
         buttonTitle: String,
         action: @escaping () -> Void
     ) -> some View {
-        return HStack(spacing: 16) {
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .frame(width: 16)
-                    .accessibilityHidden(true)
-                Text(title)
-                    .font(.callout.weight(.medium))
-                    .frame(width: 115, alignment: .leading)
-                Text(status).font(.callout)
-            }
-            Spacer(minLength: 8)
+        bubble(title: title, status: status, color: color, icon: icon) {
             Button(action: action) {
                 Text(buttonTitle)
                     .font(.callout.weight(.semibold))
@@ -201,6 +216,25 @@ struct ContentView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("\(buttonTitle)\(buttonTitle == "Open System Settings" ? " → \(title)" : " API Key")")
+        }
+    }
+
+    private func bubble<Controls: View>(
+        title: String, status: String, color: Color, icon: String,
+        @ViewBuilder controls: () -> Controls
+    ) -> some View {
+        return HStack(spacing: 16) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .frame(width: 16)
+                    .accessibilityHidden(true)
+                Text(title)
+                    .font(.callout.weight(.medium))
+                    .frame(width: 115, alignment: .leading)
+                Text(status).font(.callout)
+            }
+            Spacer(minLength: 8)
+            controls()
         }
         .foregroundStyle(color)
         .tint(color)

@@ -2,7 +2,7 @@
 
 A native macOS SwiftUI app with a single window for keyboard permissions and API key configuration. Closing the window quits the app and stops keyboard monitoring.
 
-The window has a fixed 720 × 720 point content area and cannot be resized. A persistent top status area shows **Input Monitoring**, **Accessibility**, **Microphone**, and **OpenAI API Key**, in that order, as stacked, full-width rounded bubbles, with one **Open System Settings** button for each permission and an **Enter** or **Clear** button for the API key. Each bubble uses orange text and an orange outline when permission is missing, or green when granted. macOS measures window layout in points; Retina displays render these at their display scale.
+The window has a fixed 720 × 720 point content area and cannot be resized. A persistent top status area shows **Input Monitoring**, **Accessibility**, **Microphone**, **OpenAI API Key**, and **Launch at Login**, in that order, as stacked, full-width rounded bubbles, with one **Open System Settings** button for each permission and an **Enter** or **Clear** button for the API key. Each bubble uses orange text and an orange outline when permission is missing, or green when granted. macOS measures window layout in points; Retina displays render these at their display scale.
 
 Hold **left Shift + right Shift** to start a session. Every connected screen shows the overlay, and the rising 440 → 880 Hz cue plays. Once microphone samples arrive, the center heading shows **Listening...**, with elapsed seconds on a separate, smaller, regular-weight gray line below. The counter updates as recording continues.
 
@@ -47,6 +47,12 @@ The latest recording remains in RAM until the next recording or app exit. Audio 
 The API key status bubble shows **Not provided** or **Provided sk-...TqUA**, using only the key’s first three and last four characters. It is orange when missing and green when provided.
 
 Choose **Enter** to open a secure input dialog. **OK** first changes the popup to **Validating API key...** and sends one second of generated silence to the same OpenAI transcription endpoint and model used for recordings (a small API charge may apply). Only a successful, valid response allows saving; the silent test may return an empty transcript. The key is not stored during validation. Invalid keys, quota/billing failures, unavailable service, and network errors return to the input UI with a readable error so you can edit the key or retry. **Cancel** cancels validation and prevents saving even if a response arrives later. On success, the popup closes and stores the key in the macOS Keychain as a generic-password item with account **OPENAI_API_KEY** and the app’s bundle identifier as its service. **Cancel** closes the dialog without saving. **Clear** deletes only that Keychain item. The key is loaded at startup and is never written to a preferences file or repository configuration.
+
+## Launch at login
+
+The **Launch at Login** bubble appears immediately after OpenAI API Key. Its switch registers or unregisters the main application with macOS using `SMAppService.mainApp`. Enabling it launches TalkToPrompt when you sign in to your Mac, including after restarting. It starts the normal app window and monitoring flow; microphone recording still requires holding both Shift keys.
+
+The bubble shows **Enabled** in green only when macOS reports it is allowed to launch, and **Disabled**, **Needs approval**, or **Unavailable** in orange otherwise. If approval is needed, **Open System Settings** opens Login Items so you can approve the app; the switch can also cancel the registration. The status refreshes when you return to the app. The setting is owned by macOS and survives app restarts; opening the app never enables it automatically. Keep the app at a stable location (for example, Applications) when enabling it. Registration failures display a readable error and retain the actual system state.
 
 ## Run in Xcode
 
