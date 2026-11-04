@@ -56,7 +56,7 @@ private actor SessionTranscriber: AudioTranscribing {
         if fail { throw OpenAITranscriber.TranscriptionError.rejected(401, false) }
         return try await withCheckedThrowingContinuation { pending = $0 }
     }
-    func complete() { pending?.resume(returning: "hello, world"); pending = nil }
+    func complete(text: String = "hello, world") { pending?.resume(returning: text); pending = nil }
     func setFailure() { fail = true }
 }
 
@@ -139,6 +139,23 @@ final class VoiceSessionControllerTests: XCTestCase {
         f.overlay.completeFade()
         XCTAssertEqual(f.voice.phase, .idle)
         XCTAssertEqual(f.exits, 1)
+    }
+
+    @MainActor
+    func testNoSpeechClosesQuietlyWithoutPasting() async {
+        for text in ["", "  \n "] {
+            let f = VoiceFixture()
+            await listen(f)
+            f.voice.finish()
+            await waitUntil { await f.transcriber.requests == 1 }
+            await f.transcriber.complete(text: text)
+            await waitUntil { f.voice.phase == .closing }
+            XCTAssertTrue(f.pasted.isEmpty)
+            f.overlay.completeFade()
+            XCTAssertEqual(f.voice.phase, .idle)
+            XCTAssertTrue(f.errors.isEmpty)
+            f.voice.stopImmediately()
+        }
     }
 
     @MainActor
@@ -291,13 +308,23 @@ final class OpenAITranscriberTests: XCTestCase {
         }
     }
 
-    func testMalformedAndEmptyResponsesAreRejected() async {
-        for json in ["not json", "{}", "{\"text\":\"   \"}"] {
+    func testMalformedResponsesAreRejected() async {
+        for json in ["not json", "{}"] {
             let client = OpenAITranscriber { request in
                 (Data(json.utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
             }
             do { _ = try await client.transcribe(recording, apiKey: "fake"); XCTFail("Expected invalid response") }
             catch { XCTAssertFalse(error.localizedDescription.isEmpty) }
+        }
+    }
+
+    func testNoSpeechReturnsEmptyTranscriptWithoutError() async throws {
+        for text in ["", "   "] {
+            let client = OpenAITranscriber { request in
+                (Data("{\"text\":\"\(text)\"}".utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+            }
+            let result = try await client.transcribe(recording, apiKey: "fake")
+            XCTAssertEqual(result, "")
         }
     }
 

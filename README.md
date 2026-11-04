@@ -8,7 +8,7 @@ Hold **left Shift + right Shift** to start a session. Every connected screen sho
 
 Release either Shift to stop and release the microphone, then send the recording to OpenAI for transcription using the app's Keychain API key. The overlay shows **Transcribing...** until the returned text is pasted into the currently active app using the clipboard helper. It then fades away over 222 ms and plays the falling exit cue. Further double-Shift presses and releases are ignored until the session has fully closed.
 
-Without an API key, holding both Shifts shows **No OpenAI API key provided**, without accessing the microphone or sending a request. Releasing either Shift dismisses it. Enter a key in the main window to record on the next hold. Request or paste failures close the overlay before displaying a human-readable modal error.
+Without an API key, holding both Shifts shows **No OpenAI API key provided**, without accessing the microphone or sending a request. Releasing either Shift dismisses it. Enter a key in the main window to record on the next hold. If no speech is recognized, the overlay closes quietly without pasting or displaying an error. Request or paste failures close the overlay before displaying a human-readable modal error.
 
 The full-screen panels use native backdrop blur with an 80%-opaque white tint, fading in and out over 222 ms. macOS controls the native blur radius; the animation changes its visible strength. No screen capture or Screen Recording permission is needed. Panels cover the menu bar and Dock, appear across Spaces and alongside full-screen apps, and do not take keyboard focus or intercept mouse clicks. Newly connected screens inherit the current status message.
 

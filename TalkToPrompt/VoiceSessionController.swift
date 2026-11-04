@@ -95,6 +95,10 @@ final class VoiceSessionController {
             do {
                 let text = try await self.transcriber.transcribe(recording, apiKey: key)
                 guard self.generation == id, !Task.isCancelled else { return }
+                guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    self.close()
+                    return
+                }
                 try await self.insertText(text)
                 guard self.generation == id, !Task.isCancelled else { return }
                 self.close()

@@ -20,9 +20,7 @@ struct OpenAITranscriber: AudioTranscribing {
     }
 
     func transcribe(_ recording: MicrophoneRecording, apiKey: String) async throws -> String {
-        let text = try await requestTranscript(recording, apiKey: apiKey)
-        guard !text.isEmpty else { throw TranscriptionError.emptyTranscript }
-        return text
+        try await requestTranscript(recording, apiKey: apiKey)
     }
 
     /// Checks the actual transcription endpoint, including model access and quota.
@@ -87,12 +85,11 @@ struct OpenAITranscriber: AudioTranscribing {
     }
 
     enum TranscriptionError: LocalizedError {
-        case tooLarge, invalidResponse, emptyTranscript, network(Bool), rejected(Int, Bool)
+        case tooLarge, invalidResponse, network(Bool), rejected(Int, Bool)
         var errorDescription: String? {
             switch self {
             case .tooLarge: return "This recording is too large to transcribe. Please try a shorter recording (under 25 MB)."
             case .invalidResponse: return "OpenAI returned a response that could not be read. Please try again."
-            case .emptyTranscript: return "No speech was recognized. Please try recording again."
             case .network(true): return "The transcription request timed out. Check your connection and try again."
             case .network(false): return "Could not connect to OpenAI. Check your internet connection and try again."
             case .rejected(401, _): return "OpenAI rejected the API key. Clear it and enter a valid key in TalkToPrompt."
