@@ -7,15 +7,9 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        ZStack(alignment: .top) {
-            Button("Play Beep") {
-                monitor.playBeep()
-            }
-            .controlSize(.large)
-            .accessibilityHint("Plays a one-second pure tone")
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-
+        VStack(spacing: 0) {
             statusPanel
+            Spacer()
         }
         .frame(width: 720, height: 720)
         .onAppear {

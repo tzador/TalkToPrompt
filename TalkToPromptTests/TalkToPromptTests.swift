@@ -112,24 +112,67 @@ final class TalkToPromptTests: XCTestCase {
     }
 
     @MainActor
-    func testBothTonesAreOneSecondWithExpectedFrequency() throws {
+    func testBothTonesAre222MillisecondsWithOppositePitchSweepsAndSmoothVolume() throws {
         for tone in BeepPlayer.Tone.allCases {
-            let data = BeepPlayer.makeWaveData(frequency: tone.rawValue)
+            let data = BeepPlayer.makeWaveData(tone: tone)
             let player = try AVAudioPlayer(data: data)
-            XCTAssertEqual(player.duration, 1, accuracy: 0.000001)
+            XCTAssertEqual(player.duration, 0.222, accuracy: 0.000001)
             XCTAssertEqual(player.numberOfChannels, 1)
-            XCTAssertEqual(data.count, 44 + 44_100 * 2)
+            XCTAssertEqual(data.count, 44 + 10_656 * 2)
             let samples = data.dropFirst(44).withUnsafeBytes { bytes in
-                (0..<44_100).map {
+                (0..<10_656).map {
                     Int16(littleEndian: bytes.loadUnaligned(fromByteOffset: $0 * 2, as: Int16.self))
                 }
             }
             XCTAssertEqual(samples.first, 0)
             XCTAssertEqual(samples.last, 0)
-            let crossings = zip(samples, samples.dropFirst()).filter { $0.0 <= 0 && $0.1 > 0 }.count
-            XCTAssertEqual(crossings, Int(tone.rawValue))
+            // Measure early and late audible sections, excluding the silent
+            // edges where 16-bit quantization can round cycles to zero.
+            func measuredPitch(in range: Range<Int>) throws -> (frequency: Double, time: Double) {
+                let crossings = range.filter { samples[$0 - 1] <= 0 && samples[$0] > 0 }
+                let first = try XCTUnwrap(crossings.first)
+                let last = try XCTUnwrap(crossings.last)
+                let frequency = 48_000.0 * Double(crossings.count - 1) / Double(last - first)
+                let time = Double(first + last) / (2 * 48_000.0)
+                return (frequency, time)
+            }
+            let early = try measuredPitch(in: samples.count / 10..<(samples.count * 4 / 10))
+            let late = try measuredPitch(in: samples.count * 6 / 10..<(samples.count * 9 / 10))
+            if tone == .pressed {
+                XCTAssertGreaterThan(late.frequency, early.frequency)
+            } else {
+                XCTAssertLessThan(late.frequency, early.frequency)
+            }
+            for pitch in [early, late] {
+                let start = tone == .pressed ? 440.0 : 880.0
+                let end = tone == .pressed ? 880.0 : 440.0
+                let expectedFrequency = start + (end - start) * pitch.time / 0.222
+                XCTAssertEqual(pitch.frequency, expectedFrequency, accuracy: 1)
+            }
             XCTAssertLessThanOrEqual(samples.map { abs(Int($0)) }.max()!, 8192)
+            XCTAssertGreaterThan(samples.map { abs(Int($0)) }.max()!, 8000)
+
+            func rms(_ samples: ArraySlice<Int16>) -> Double {
+                sqrt(samples.reduce(0.0) { $0 + pow(Double($1), 2) } / Double(samples.count))
+            }
+            let middle = samples.count / 2
+            let peakRMS = rms(samples[(middle - 192)..<(middle + 192)])
+            // The beginning and end must fade across the whole tone, rather
+            // than jumping to full volume after a short edge fade.
+            XCTAssertLessThan(rms(samples.prefix(384)), peakRMS * 0.05)
+            XCTAssertLessThan(rms(samples.suffix(384)), peakRMS * 0.05)
         }
+    }
+
+    @MainActor
+    func testVolumeEnvelopeIsSilentAtBothEndsAndPeaksHalfway() {
+        XCTAssertEqual(BeepPlayer.volumeEnvelope(progress: 0), 0)
+        XCTAssertEqual(BeepPlayer.volumeEnvelope(progress: 0.25), 0.5, accuracy: 0.000001)
+        XCTAssertEqual(BeepPlayer.volumeEnvelope(progress: 0.5), 1)
+        XCTAssertEqual(BeepPlayer.volumeEnvelope(progress: 0.75), 0.5, accuracy: 0.000001)
+        XCTAssertEqual(BeepPlayer.volumeEnvelope(progress: 1), 0)
+        XCTAssertLessThan(BeepPlayer.volumeEnvelope(progress: 0.001), 0.0001)
+        XCTAssertLessThan(BeepPlayer.volumeEnvelope(progress: 0.999), 0.0001)
     }
 
     @MainActor

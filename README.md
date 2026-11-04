@@ -1,10 +1,10 @@
 # TalkToPrompt
 
-A native macOS SwiftUI app with a single window and a centered **Play Beep** button. Pressing it plays a 440 Hz sine wave for one second. Closing the window quits the app and stops keyboard monitoring.
+A native macOS SwiftUI app with a single window for keyboard permissions and API key configuration. Closing the window quits the app and stops keyboard monitoring.
 
 The window has a fixed 720 × 720 point content area and cannot be resized. A persistent top status area shows **Input Monitoring**, **Accessibility**, and **OpenAI API Key** as stacked, full-width rounded bubbles, with one **Open System Settings** button for each permission and an **Enter** or **Clear** button for the API key. Each bubble uses orange text and an orange outline when permission is missing, or green when granted. macOS measures window layout in points; Retina displays render these at their display scale.
 
-While the app is running, holding **left Shift + right Shift** plays a one-second **440 Hz** sine wave. Releasing either Shift plays a one-second **880 Hz** sine wave and pastes **hello, world** into the currently focused app when Accessibility permission is granted. Either press order works; keeping the keys held does not repeat the sound. The two tones can overlap if you release quickly, so each can finish its full second. Repeating the same tone restarts it.
+While the app is running, holding **left Shift + right Shift** plays a **222 ms rising sine sweep from 440 to 880 Hz**. Releasing either Shift plays a **222 ms falling sine sweep from 880 to 440 Hz** and pastes **hello, world** into the currently focused app when Accessibility permission is granted. Either press order works; keeping the keys held does not repeat the sound. Both tones use a raised-cosine volume envelope, `(1 - cos(2πt / 0.222)) / 2`: silence at the beginning, peak volume at 111 ms, and silence again at 222 ms. Pitch changes linearly with continuous phase. The two tones can overlap if you release quickly, so each can finish its full 222 ms. Repeating the same tone restarts it.
 
 ## Keyboard permissions
 
@@ -12,7 +12,7 @@ At startup, the app checks Input Monitoring and event-posting permission. If a m
 
 In **System Settings → Privacy & Security → Input Monitoring**, enable **TalkToPrompt**. The app rechecks when you return and periodically while running. If macOS asks you to quit and reopen the app, do so. If access is enabled but monitoring cannot start, quit and reopen the app. The **Open System Settings** beside Input Monitoring button in the status bar always opens its Settings pane.
 
-Monitoring works while other apps have focus. It uses a passive event tap for modifier changes only, does not record typed text, and does not intercept keyboard input. The **Play Beep** button works without permission. macOS may restrict monitoring during protected input, such as password entry.
+Monitoring works while other apps have focus. It uses a passive event tap for modifier changes only, does not record typed text, and does not intercept keyboard input. macOS may restrict monitoring during protected input, such as password entry.
 
 Event-posting permission is shown under **System Settings → Privacy & Security → Accessibility**. Use **Open System Settings** beside Accessibility in the startup explanation or status bar to request access if missing and open Settings so you can enable **TalkToPrompt**. Its status is rechecked when you return and periodically while running. Follow any macOS quit-and-reopen instructions. This permission is required for automatic pasting when the Shift chord is released. Missing Accessibility permission does not block the Shift tones. If you open Accessibility settings while access is missing, returning to TalkToPrompt shows an in-app **Restart** / **Not Now** prompt, even if macOS does not offer to restart. Choose Restart after enabling the toggle. The app restores any pending clipboard backup and launches a replacement instance before quitting; if launching fails, the current app stays open and displays an error.
 
