@@ -9,12 +9,17 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        VStack(spacing: 0) {
-            statusPanel
-            usageGuide
-            Spacer(minLength: 0)
-        }
-        .frame(width: 720, height: 720)
+        NativeCalmView(state: nativeCalmState, actions: .init(
+            inputMonitoring: { monitor.openInputMonitoringSettings() },
+            accessibility: { monitor.openAccessibilitySettings() },
+            microphone: { Task { await monitor.microphone.openSettings() } },
+            apiKey: {
+                if apiKey.isProvided { apiKey.clear() }
+                else { showAPIKeyEntry = true }
+            },
+            setLogin: { launchAtLogin.setEnabled($0) },
+            loginSettings: { launchAtLogin.openLoginItemsSettings() }
+        ))
         .onAppear {
             monitor.start()
             apiKey.load()
@@ -132,178 +137,21 @@ struct ContentView: View {
         monitor.microphone.errorMessage = nil
     }
 
-    private var statusPanel: some View {
-        VStack(spacing: 0) {
-            VStack(spacing: 12) {
-                permissionStatus(
-                    title: "Input Monitoring",
-                    enabled: monitor.hasInputMonitoringPermission,
-                    openSettings: { monitor.openInputMonitoringSettings() }
-                )
-                permissionStatus(
-                    title: "Accessibility",
-                    enabled: monitor.hasEventPostingPermission,
-                    openSettings: { monitor.openAccessibilitySettings() }
-                )
-                statusBubble(
-                    title: "Microphone",
-                    status: monitor.microphone.authorization == .authorized ? "Permission granted" : "Permission not granted",
-                    color: monitor.microphone.authorization == .authorized ? .green : .orange,
-                    icon: "mic.fill",
-                    buttonTitle: "Open System Settings"
-                ) {
-                    Task { await monitor.microphone.openSettings() }
-                }
-                statusBubble(
-                    title: "OpenAI API Key",
-                    status: apiKey.status,
-                    color: apiKey.isProvided ? .green : .orange,
-                    icon: "key.fill",
-                    buttonTitle: apiKey.isProvided ? "Clear" : "Enter"
-                ) {
-                    if apiKey.isProvided {
-                        apiKey.clear()
-                    } else {
-                        showAPIKeyEntry = true
-                    }
-                }
-                bubble(
-                    title: "Launch at Login", status: launchAtLogin.statusText,
-                    color: launchAtLogin.isEnabled ? .green : .orange,
-                    icon: "power"
-                ) {
-                    if launchAtLogin.needsApproval {
-                        Button("Open System Settings") { launchAtLogin.openLoginItemsSettings() }
-                            .buttonStyle(.borderedProminent)
-                            .foregroundStyle(.black.opacity(0.85))
-                    }
-                    Toggle("Launch at Login", isOn: Binding(
-                        get: { launchAtLogin.isRequested },
-                        set: { launchAtLogin.setEnabled($0) }
-                    ))
-                    .toggleStyle(.switch)
-                    .labelsHidden()
-                    .accessibilityLabel("Launch at Login")
-                    .help("Open TalkToPrompt automatically when you sign in to your Mac")
-                }
-            }
-            .padding(16)
-            .background(.bar)
-            Divider()
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("App status")
-    }
-
-    private var usageGuide: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Turn your voice into text")
-                .font(.title2.bold())
-            Text("Capture a thought, draft a message, or write a prompt without breaking your flow. TalkToPrompt turns your speech into text in the app you’re using.")
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            VStack(alignment: .leading, spacing: 10) {
-                usageStep("1", title: "Choose where to write.", detail: "Click a text field in any app.")
-                usageStep("2", title: "Hold both Shift keys and speak.", detail: "The overlay shows Listening… once recording starts.")
-                usageStep("3", title: "Release either Shift key.", detail: "Wait for transcription; your words are pasted into the active app.")
-            }
-
-            Text("Grant the permissions and add your API key above to get started. Audio is sent to OpenAI for transcription using your key.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .font(.callout)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 28)
-        .padding(.vertical, 22)
-    }
-
-    private func usageStep(_ number: String, title: String, detail: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Text(number)
-                .font(.caption.weight(.semibold).monospacedDigit())
-                .frame(width: 22, height: 22)
-                .background(.quaternary, in: Circle())
-                .accessibilityHidden(true)
-            (Text(title).bold() + Text(" " + detail).foregroundColor(.secondary))
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 2)
-        }
-    }
-
-    private func permissionStatus(
-        title: String,
-        enabled: Bool,
-        openSettings: @escaping () -> Void
-    ) -> some View {
+    private var nativeCalmState: NativeCalmState {
         let checking = monitor.status == .checking
-        let status = checking ? "Checking permission…" : (enabled ? "Permission granted" : "Permission not granted")
-        let color: Color = checking ? .secondary : (enabled ? .green : .orange)
-
-        return statusBubble(
-            title: title, status: status, color: color,
-            icon: checking ? "circle.dotted" : (enabled ? "checkmark.circle.fill" : "exclamationmark.circle.fill"),
-            buttonTitle: "Open System Settings", action: openSettings
+        return NativeCalmState(
+            inputMonitoring: checking ? .checking : (monitor.status == .unavailable ? .restartRequired : (monitor.hasInputMonitoringPermission ? .granted : .missing)),
+            accessibility: checking ? .checking : (monitor.hasEventPostingPermission ? .granted : .missing),
+            microphone: monitor.microphone.authorization == .authorized ? .granted : .missing,
+            apiKeyStatus: apiKey.status,
+            hasAPIKey: apiKey.isProvided,
+            apiKeyUnavailable: apiKey.errorMessage != nil,
+            loginStatus: launchAtLogin.statusText,
+            loginRequested: launchAtLogin.isRequested,
+            loginNeedsApproval: launchAtLogin.needsApproval,
+            loginUnavailable: launchAtLogin.status == .notFound
         )
-        .help(title == "Input Monitoring" && monitor.status == .unavailable
-              ? "Permission is enabled, but keyboard monitoring could not start. Quit and reopen the app."
-              : "\(title): \(status)")
     }
-
-    private func statusBubble(
-        title: String,
-        status: String,
-        color: Color,
-        icon: String,
-        buttonTitle: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        bubble(title: title, status: status, color: color, icon: icon) {
-            Button(action: action) {
-                Text(buttonTitle)
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(.black.opacity(0.85))
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 9)
-                    .frame(minWidth: 130)
-                    .background(color, in: RoundedRectangle(cornerRadius: 8))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("\(buttonTitle)\(buttonTitle == "Open System Settings" ? " → \(title)" : " API Key")")
-        }
-    }
-
-    private func bubble<Controls: View>(
-        title: String, status: String, color: Color, icon: String,
-        @ViewBuilder controls: () -> Controls
-    ) -> some View {
-        return HStack(spacing: 16) {
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .frame(width: 16)
-                    .accessibilityHidden(true)
-                Text(title)
-                    .font(.callout.weight(.medium))
-                    .frame(width: 115, alignment: .leading)
-                Text(status).font(.callout)
-            }
-            Spacer(minLength: 8)
-            controls()
-        }
-        .foregroundStyle(color)
-        .tint(color)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(color.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
-        .overlay {
-            RoundedRectangle(cornerRadius: 14)
-                .strokeBorder(color, lineWidth: 1)
-        }
-    }
-
 }
 
 #Preview {

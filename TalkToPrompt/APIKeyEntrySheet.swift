@@ -38,7 +38,7 @@ struct APIKeyEntrySheet: View {
             if let errorMessage {
                 Text(errorMessage)
                     .font(.callout)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(NativeCalmPalette.red)
             }
             HStack {
                 Spacer()
