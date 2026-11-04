@@ -5,7 +5,7 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        ZStack(alignment: .bottom) {
+        ZStack(alignment: .top) {
             Button("Play Beep") {
                 monitor.playBeep()
             }
@@ -15,7 +15,7 @@ struct ContentView: View {
 
             permissionStatusBar
         }
-        .frame(width: 720, height: 480)
+        .frame(width: 720, height: 720)
         .onAppear { monitor.start() }
         .onDisappear { monitor.stop() }
         .onChange(of: scenePhase) { _, phase in
@@ -96,23 +96,21 @@ struct ContentView: View {
 
     private var permissionStatusBar: some View {
         VStack(spacing: 0) {
-            Divider()
-            HStack(spacing: 16) {
+            VStack(spacing: 12) {
                 permissionStatus(
                     title: "Input Monitoring",
                     enabled: monitor.hasInputMonitoringPermission,
                     openSettings: { monitor.openInputMonitoringSettings() }
                 )
-                Divider().frame(height: 44)
                 permissionStatus(
                     title: "Accessibility",
                     enabled: monitor.hasEventPostingPermission,
                     openSettings: { monitor.openAccessibilitySettings() }
                 )
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(16)
             .background(.bar)
+            Divider()
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Permission status")
@@ -125,21 +123,39 @@ struct ContentView: View {
     ) -> some View {
         let checking = monitor.status == .checking
         let status = checking ? "Checking permission…" : (enabled ? "Permission granted" : "Permission not granted")
+        let color: Color = checking ? .secondary : (enabled ? .green : .orange)
 
-        return VStack(alignment: .leading, spacing: 6) {
+        return HStack(spacing: 16) {
             HStack(spacing: 8) {
                 Image(systemName: checking ? "circle.dotted" : (enabled ? "checkmark.circle.fill" : "exclamationmark.circle.fill"))
-                    .foregroundStyle(checking ? Color.secondary : (enabled ? .green : .orange))
                     .accessibilityHidden(true)
-                Text(title).font(.caption.weight(.medium))
-                Text(status).font(.caption).foregroundStyle(.secondary)
+                Text(title)
+                    .font(.callout.weight(.medium))
+                    .frame(width: 115, alignment: .leading)
+                Text(status).font(.callout)
             }
-            Button("Open System Settings", action: openSettings)
-                .font(.caption)
-                .controlSize(.small)
-                .help("Open \(title) settings")
+            Spacer(minLength: 8)
+            Button(action: openSettings) {
+                Text("Open System Settings")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.black.opacity(0.85))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                    .background(color, in: RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(.plain)
+            .help("Open \(title) settings")
         }
+        .foregroundStyle(color)
+        .tint(color)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(color.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .strokeBorder(color, lineWidth: 1)
+        }
         .help(title == "Input Monitoring" && monitor.status == .unavailable
               ? "Permission is enabled, but keyboard monitoring could not start. Quit and reopen the app."
               : "\(title): \(status)")

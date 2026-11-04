@@ -2,7 +2,7 @@
 
 A native macOS SwiftUI app with a single window and a centered **Play Beep** button. Pressing it plays a 440 Hz sine wave for one second. Closing the window quits the app and stops keyboard monitoring.
 
-The window has a fixed 720 × 480 point content area and cannot be resized. A persistent bottom status bar shows **Input Monitoring** and **Accessibility** permission states, with one **Open System Settings** button for each permission. macOS measures window layout in points; Retina displays render these at their display scale.
+The window has a fixed 720 × 720 point content area and cannot be resized. A persistent top status area shows **Input Monitoring** and **Accessibility** as stacked, full-width rounded bubbles, with one **Open System Settings** button for each permission. Each bubble uses orange text and an orange outline when permission is missing, or green when granted. macOS measures window layout in points; Retina displays render these at their display scale.
 
 While the app is running, holding **left Shift + right Shift** plays a one-second **440 Hz** sine wave. Releasing either Shift plays a one-second **880 Hz** sine wave and pastes **hello, world** into the currently focused app when Accessibility permission is granted. Either press order works; keeping the keys held does not repeat the sound. The two tones can overlap if you release quickly, so each can finish its full second. Repeating the same tone restarts it.
 

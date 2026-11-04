@@ -8,7 +8,7 @@ struct TalkToPromptApp: App {
             ContentView()
                 .background(WindowButtonConfiguration())
         }
-        .defaultSize(width: 720, height: 480)
+        .defaultSize(width: 720, height: 720)
         .windowResizability(.contentSize)
     }
 }
