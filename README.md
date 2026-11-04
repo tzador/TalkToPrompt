@@ -54,13 +54,17 @@ The **Launch at Login** bubble appears immediately after OpenAI API Key. Its swi
 
 The bubble shows **Enabled** in green only when macOS reports it is allowed to launch, and **Disabled**, **Needs approval**, or **Unavailable** in orange otherwise. If approval is needed, **Open System Settings** opens Login Items so you can approve the app; the switch can also cancel the registration. The status refreshes when you return to the app. The setting is owned by macOS and survives app restarts; opening the app never enables it automatically. Keep the app at a stable location (for example, Applications) when enabling it. Registration failures display a readable error and retain the actual system state.
 
+## App icon
+
+`TalkToPrompt/TalkToPromptIcon.icon` is the app's layered Icon Composer document and is included in the app target's resources. Its solid white background is separate from the black microphone/cursor artwork in `Assets/Symbols.png` (rasterized from `Assets/Symbols.svg` to avoid stroke clipping in the native icon renderer); macOS supplies the outer mask and material. Edit the `.icon` document in Icon Composer, then rebuild normally. Xcode compiles the layered icon and generates a legacy `.icns` for older macOS versions.
+
 ## Run in Xcode
 
 1. Open `TalkToPrompt.xcodeproj`.
 2. Select the **TalkToPrompt** scheme and **My Mac** destination.
 3. Press **⌘R**.
 
-Requires macOS 14 or later and Xcode 15 or later. There are no external dependencies. Microphone recording requires permission in Privacy & Security → Microphone. The app uses normal macOS Dock and menu bar behavior.
+Requires macOS 14 or later and Xcode 26 or later. There are no external dependencies. Microphone recording requires permission in Privacy & Security → Microphone. The app uses normal macOS Dock and menu bar behavior.
 
 For distribution, select your Apple development team in the target's **Signing & Capabilities** settings. Local development uses ad hoc signing and needs no team.
 
