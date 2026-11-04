@@ -5,6 +5,7 @@ struct ContentView: View {
     @StateObject private var apiKey = APIKeyModel()
     @StateObject private var launchAtLogin = LaunchAtLoginModel()
     @State private var showAPIKeyEntry = false
+    @State private var dockIcon = DockIconController()
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -19,7 +20,13 @@ struct ContentView: View {
             apiKey.load()
             launchAtLogin.refresh()
         }
-        .onDisappear { monitor.stop() }
+        .onChange(of: dockIconState, initial: true) { _, state in
+            dockIcon.update(state)
+        }
+        .onDisappear {
+            monitor.stop()
+            dockIcon.restore()
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 launchAtLogin.refresh()
@@ -27,6 +34,7 @@ struct ContentView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+            dockIcon.restore()
             monitor.stop()
         }
         .sheet(isPresented: $monitor.showPermissionExplanation) {
@@ -93,6 +101,15 @@ struct ContentView: View {
                 Text(monitor.restartError ?? launchAtLogin.errorMessage ?? apiKey.errorMessage ?? monitor.microphone.errorMessage ?? monitor.transcriptionError ?? monitor.playbackError ?? "The action could not be completed.")
             }
         }
+    }
+
+    private var dockIconState: DockIconController.State {
+        .permissions(
+            inputMonitoring: monitor.hasInputMonitoringPermission,
+            accessibility: monitor.hasEventPostingPermission,
+            microphone: monitor.microphone.authorization == .authorized,
+            apiKey: apiKey.isProvided
+        )
     }
 
     private var alertTitle: String {

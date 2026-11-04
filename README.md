@@ -48,6 +48,12 @@ The API key status bubble shows **Not provided** or **Provided sk-...TqUA**, usi
 
 Choose **Enter** to open a secure input dialog. **OK** first changes the popup to **Validating API key...** and sends one second of generated silence to the same OpenAI transcription endpoint and model used for recordings (a small API charge may apply). Only a successful, valid response allows saving; the silent test may return an empty transcript. The key is not stored during validation. Invalid keys, quota/billing failures, unavailable service, and network errors return to the input UI with a readable error so you can edit the key or retry. **Cancel** cancels validation and prevents saving even if a response arrives later. On success, the popup closes and stores the key in the macOS Keychain as a generic-password item with account **OPENAI_API_KEY** and the app’s bundle identifier as its service. **Cancel** closes the dialog without saving. **Clear** deletes only that Keychain item. The key is loaded at startup and is never written to a preferences file or repository configuration.
 
+## Dock readiness status
+
+While running, the Dock icon shows green microphone and cursor symbols on white when Input Monitoring, Accessibility, and Microphone permissions are granted and an API key is provided. If any of these requirements is missing, the symbols are red. Launch at Login does not affect readiness. The colors sampled from the reference window controls are green `#35C759` and red `#FF5C60`.
+
+`DockIconController.swift` applies the appropriate bundled `.icns` icon with `NSApplication.applicationIconImage`, updating as permission and API key statuses change. `DockIcons/DockIconReady.icns` and `DockIcons/DockIconMissing.icns` retain the native white background and shape, exported with Xcode’s asset compiler from the adjacent `.icon` source documents. The default saved application icon remains black and white, and the runtime override is cleared when the window closes or the app quits.
+
 ## Launch at login
 
 The **Launch at Login** bubble appears immediately after OpenAI API Key. Its switch registers or unregisters the main application with macOS using `SMAppService.mainApp`. Enabling it launches TalkToPrompt when you sign in to your Mac, including after restarting. It starts the normal app window and monitoring flow; microphone recording still requires holding both Shift keys.
