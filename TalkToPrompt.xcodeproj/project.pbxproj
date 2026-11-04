@@ -17,6 +17,8 @@
 		A00000000000000000000007 /* APIKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000018 /* APIKeyStore.swift */; };
 		A00000000000000000000008 /* APIKeyEntrySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000019 /* APIKeyEntrySheet.swift */; };
 		B00000000000000000000003 /* APIKeyStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000014 /* APIKeyStoreTests.swift */; };
+		A00000000000000000000009 /* DesktopOverlayController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000001A /* DesktopOverlayController.swift */; };
+		B00000000000000000000004 /* DesktopOverlayControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000015 /* DesktopOverlayControllerTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -37,6 +39,8 @@
 		A00000000000000000000018 /* APIKeyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIKeyStore.swift; sourceTree = "<group>"; };
 		A00000000000000000000019 /* APIKeyEntrySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIKeyEntrySheet.swift; sourceTree = "<group>"; };
 		B00000000000000000000014 /* APIKeyStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIKeyStoreTests.swift; sourceTree = "<group>"; };
+		A0000000000000000000001A /* DesktopOverlayController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopOverlayController.swift; sourceTree = "<group>"; };
+		B00000000000000000000015 /* DesktopOverlayControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopOverlayControllerTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -51,12 +55,12 @@
 		};
 		A00000000000000000000031 /* TalkToPrompt */ = {
 			isa = PBXGroup;
-			children = (A00000000000000000000011 /* TalkToPromptApp.swift */, A00000000000000000000012 /* ContentView.swift */, A00000000000000000000013 /* BeepPlayer.swift */, A00000000000000000000016 /* ShiftMonitor.swift */, A00000000000000000000017 /* ClipboardTextInserter.swift */, A00000000000000000000018 /* APIKeyStore.swift */, A00000000000000000000019 /* APIKeyEntrySheet.swift */, A00000000000000000000014 /* Assets.xcassets */);
+			children = (A00000000000000000000011 /* TalkToPromptApp.swift */, A00000000000000000000012 /* ContentView.swift */, A00000000000000000000013 /* BeepPlayer.swift */, A00000000000000000000016 /* ShiftMonitor.swift */, A00000000000000000000017 /* ClipboardTextInserter.swift */, A0000000000000000000001A /* DesktopOverlayController.swift */, A00000000000000000000018 /* APIKeyStore.swift */, A00000000000000000000019 /* APIKeyEntrySheet.swift */, A00000000000000000000014 /* Assets.xcassets */);
 			path = TalkToPrompt;
 			sourceTree = "<group>";
 		};
 		A00000000000000000000032 /* Products */ = {isa = PBXGroup; children = (A00000000000000000000015 /* TalkToPrompt.app */, B00000000000000000000012 /* TalkToPromptTests.xctest */); name = Products; sourceTree = "<group>"; };
-		B00000000000000000000030 = {isa = PBXGroup; children = (B00000000000000000000011, B00000000000000000000013, B00000000000000000000014); path = TalkToPromptTests; sourceTree = "<group>"; };
+		B00000000000000000000030 = {isa = PBXGroup; children = (B00000000000000000000011, B00000000000000000000013, B00000000000000000000014, B00000000000000000000015); path = TalkToPromptTests; sourceTree = "<group>"; };
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -111,8 +115,8 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		A00000000000000000000021 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000001 /* TalkToPromptApp.swift in Sources */, A00000000000000000000002 /* ContentView.swift in Sources */, A00000000000000000000003 /* BeepPlayer.swift in Sources */, A00000000000000000000005 /* ShiftMonitor.swift in Sources */, A00000000000000000000006 /* ClipboardTextInserter.swift in Sources */, A00000000000000000000007 /* APIKeyStore.swift in Sources */, A00000000000000000000008 /* APIKeyEntrySheet.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
-		B00000000000000000000021 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B00000000000000000000001, B00000000000000000000002, B00000000000000000000003); runOnlyForDeploymentPostprocessing = 0; };
+		A00000000000000000000021 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000001 /* TalkToPromptApp.swift in Sources */, A00000000000000000000002 /* ContentView.swift in Sources */, A00000000000000000000003 /* BeepPlayer.swift in Sources */, A00000000000000000000005 /* ShiftMonitor.swift in Sources */, A00000000000000000000006 /* ClipboardTextInserter.swift in Sources */, A00000000000000000000007 /* APIKeyStore.swift in Sources */, A00000000000000000000008 /* APIKeyEntrySheet.swift in Sources */, A00000000000000000000009 /* DesktopOverlayController.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
+		B00000000000000000000021 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B00000000000000000000001, B00000000000000000000002, B00000000000000000000003, B00000000000000000000004); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */

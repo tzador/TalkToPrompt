@@ -39,10 +39,12 @@ final class ShiftMonitor: ObservableObject {
 
     private let beepPlayer = BeepPlayer()
     private let textInserter = ClipboardTextInserter()
+    private let desktopOverlay = DesktopOverlayController()
     private var insertionTasks: [UUID: Task<Void, Never>] = [:]
     private var chord = ShiftChordState()
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
+    private var tapGeneration = UUID()
     private var permissionTimer: Timer?
     private var wakeObserver: NSObjectProtocol?
     private var activationObserver: NSObjectProtocol?
@@ -149,6 +151,7 @@ final class ShiftMonitor: ObservableObject {
         awaitingAccessibilitySettingsReturn = false
         visitedAccessibilitySettings = false
         stopTap()
+        desktopOverlay.stop()
         status = .checking
     }
 
@@ -282,6 +285,8 @@ final class ShiftMonitor: ObservableObject {
             leftPressed: flags & UInt64(NX_DEVICELSHIFTKEYMASK) != 0,
             rightPressed: flags & UInt64(NX_DEVICERSHIFTKEYMASK) != 0
         )
+        desktopOverlay.start()
+        if chord.bothPressed { desktopOverlay.show() }
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
         status = .monitoring
@@ -302,9 +307,16 @@ final class ShiftMonitor: ObservableObject {
             leftPressed: flags & UInt64(NX_DEVICELSHIFTKEYMASK) != 0,
             rightPressed: flags & UInt64(NX_DEVICERSHIFTKEYMASK) != 0
         ) {
-            // Generating or starting audio must not delay the event callback.
+            let generation = tapGeneration
+            // Window and audio work must not delay the event callback.
             Task { @MainActor [weak self] in
-                guard let self, self.started, self.status == .monitoring else { return }
+                guard let self, self.started, self.status == .monitoring,
+                      self.tapGeneration == generation else { return }
+                // Do not flash an obsolete press if release was already received.
+                if self.chord.bothPressed == pressed {
+                    if pressed { self.desktopOverlay.show() }
+                    else { self.desktopOverlay.hide() }
+                }
                 self.playBeep(pressed ? .pressed : .released)
                 if !pressed { self.insertGreeting() }
             }
@@ -329,6 +341,8 @@ final class ShiftMonitor: ObservableObject {
     }
 
     private func stopTap() {
+        tapGeneration = UUID()
+        desktopOverlay.hideImmediately()
         if let eventTap {
             CGEvent.tapEnable(tap: eventTap, enable: false)
             CFMachPortInvalidate(eventTap)
