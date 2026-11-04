@@ -46,7 +46,7 @@ struct ContentView: View {
                             .help("Open Accessibility settings")
                     }
                 }
-                Text("The app listens only for modifier-key changes. It does not record what you type.")
+                Text("The app watches Shift keys. It does not record what you type.")
                     .foregroundStyle(.secondary)
                 HStack {
                     Button("Not Now", role: .cancel) {
@@ -70,7 +70,8 @@ struct ContentView: View {
         .alert(alertTitle, isPresented: Binding(
             get: {
                 monitor.showRestartConfirmation || monitor.playbackError != nil
-                    || monitor.insertionError != nil || monitor.restartError != nil || apiKey.errorMessage != nil
+                    || monitor.restartError != nil || apiKey.errorMessage != nil
+                    || monitor.microphone.errorMessage != nil
             },
             set: { if !$0 { dismissAlert() } }
         )) {
@@ -84,7 +85,7 @@ struct ContentView: View {
             if monitor.showRestartConfirmation {
                 Text("If you enabled Accessibility in System Settings, restart TalkToPrompt to make sure the change takes effect.")
             } else {
-                Text(monitor.restartError ?? apiKey.errorMessage ?? monitor.insertionError ?? monitor.playbackError ?? "The action could not be completed.")
+                Text(monitor.restartError ?? apiKey.errorMessage ?? monitor.microphone.errorMessage ?? monitor.playbackError ?? "The action could not be completed.")
             }
         }
     }
@@ -93,15 +94,16 @@ struct ContentView: View {
         if monitor.showRestartConfirmation { return "Restart TalkToPrompt?" }
         if monitor.restartError != nil { return "Unable to Restart" }
         if apiKey.errorMessage != nil { return "Unable to Access API Key" }
-        return monitor.insertionError == nil ? "Unable to Play Beep" : "Unable to Paste Text"
+        if monitor.microphone.errorMessage != nil { return "Unable to Record Audio" }
+        return "Unable to Play Audio"
     }
 
     private func dismissAlert() {
         monitor.showRestartConfirmation = false
         monitor.playbackError = nil
-        monitor.insertionError = nil
         monitor.restartError = nil
         apiKey.errorMessage = nil
+        monitor.microphone.errorMessage = nil
     }
 
     private var statusPanel: some View {
@@ -117,6 +119,15 @@ struct ContentView: View {
                     enabled: monitor.hasEventPostingPermission,
                     openSettings: { monitor.openAccessibilitySettings() }
                 )
+                statusBubble(
+                    title: "Microphone",
+                    status: monitor.microphone.authorization == .authorized ? "Permission granted" : "Permission not granted",
+                    color: monitor.microphone.authorization == .authorized ? .green : .orange,
+                    icon: "mic.fill",
+                    buttonTitle: "Open System Settings"
+                ) {
+                    Task { await monitor.microphone.openSettings() }
+                }
                 statusBubble(
                     title: "OpenAI API Key",
                     status: apiKey.status,

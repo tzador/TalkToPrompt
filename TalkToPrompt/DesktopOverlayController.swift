@@ -3,13 +3,16 @@ import QuartzCore
 
 /// One decorative, non-activating panel per screen, including menu bar and Dock.
 @MainActor
-final class DesktopOverlayController {
+final class DesktopOverlayController: VoiceSessionOverlay {
     static let fadeDuration: TimeInterval = 0.222
     private static let fadeAnimationKey = "overlayFade"
     private let screenFrames: () -> [NSRect]
     private var screenObserver: NSObjectProtocol?
+    private var hideTask: Task<Void, Never>?
     private(set) var panels: [OverlayPanel] = []
     private(set) var isVisible = false
+    private(set) var isListening = false
+    private(set) var message: String?
 
     init(screenFrames: @escaping () -> [NSRect] = { NSScreen.screens.map(\.frame) }) {
         self.screenFrames = screenFrames
@@ -30,21 +33,49 @@ final class DesktopOverlayController {
     }
 
     func show() {
+        hideTask?.cancel()
+        hideTask = nil
         start()
         guard !isVisible else { return }
         isVisible = true
         for panel in panels { fade(panel, to: 1) }
     }
 
-    func hide() {
-        guard isVisible else { return }
+    func hide(completion: (() -> Void)? = nil) {
+        guard isVisible || panels.contains(where: \.isVisible) else { completion?(); return }
         isVisible = false
+        hideTask?.cancel()
         for panel in panels { fade(panel, to: 0) }
+        hideTask = Task { @MainActor [weak self] in
+            do { try await Task.sleep(for: .seconds(Self.fadeDuration)) }
+            catch { return }
+            guard let self, !Task.isCancelled, !self.isVisible else { return }
+            for panel in self.panels { self.hideImmediately(panel) }
+            self.setMessage(nil)
+            self.hideTask = nil
+            completion?()
+        }
     }
 
     func hideImmediately() {
+        hideTask?.cancel()
+        hideTask = nil
         isVisible = false
+        setListening(false)
         for panel in panels { hideImmediately(panel) }
+    }
+
+    func setListening(_ listening: Bool) {
+        setMessage(listening ? "Listening..." : nil)
+    }
+
+    func setMessage(_ message: String?) {
+        self.message = message
+        isListening = message?.hasPrefix("Listening...") == true
+        for panel in panels {
+            guard let view = panel.contentView as? OverlayContentView else { continue }
+            view.setMessage(message)
+        }
     }
 
     func stop() {
@@ -63,7 +94,10 @@ final class DesktopOverlayController {
             panel.close()
         }
         panels = frames.map { frame in
-            OverlayPanel(frame: frame)
+            let panel = OverlayPanel(frame: frame)
+            let view = panel.contentView as? OverlayContentView
+            view?.setMessage(message)
+            return panel
         }
         if isVisible {
             for panel in panels { fade(panel, to: 1) }
@@ -142,6 +176,8 @@ final class DesktopOverlayController {
     final class OverlayContentView: NSView {
         let backdrop = NSVisualEffectView()
         let whiteTint = NSView()
+        let statusLabel = NSTextField(labelWithString: "")
+        let counterLabel = NSTextField(labelWithString: "")
 
         override init(frame: NSRect) {
             super.init(frame: frame)
@@ -165,6 +201,43 @@ final class DesktopOverlayController {
             whiteTint.layer?.backgroundColor = NSColor.white.cgColor
             whiteTint.layer?.opacity = 0.8
             addSubview(whiteTint)
+
+            statusLabel.font = .systemFont(ofSize: 64, weight: .bold)
+            statusLabel.textColor = .black
+            statusLabel.alignment = .center
+            statusLabel.isHidden = true
+            statusLabel.translatesAutoresizingMaskIntoConstraints = false
+            statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            addSubview(statusLabel)
+            counterLabel.font = .monospacedDigitSystemFont(ofSize: 28, weight: .regular)
+            counterLabel.textColor = NSColor.black.withAlphaComponent(0.55)
+            counterLabel.alignment = .center
+            counterLabel.isHidden = true
+            counterLabel.translatesAutoresizingMaskIntoConstraints = false
+            counterLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            addSubview(counterLabel)
+            NSLayoutConstraint.activate([
+                statusLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
+                statusLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+                statusLabel.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 16),
+                statusLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -16),
+                counterLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
+                counterLabel.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 10),
+                counterLabel.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 16),
+                counterLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -16)
+            ])
+        }
+
+        func setMessage(_ message: String?) {
+            if let message, let separator = message.range(of: "... ") {
+                statusLabel.stringValue = String(message[..<separator.lowerBound]) + "..."
+                counterLabel.stringValue = String(message[separator.upperBound...])
+            } else {
+                statusLabel.stringValue = message ?? ""
+                counterLabel.stringValue = ""
+            }
+            statusLabel.isHidden = message == nil
+            counterLabel.isHidden = counterLabel.stringValue.isEmpty
         }
 
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }

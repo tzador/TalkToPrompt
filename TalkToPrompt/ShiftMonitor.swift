@@ -32,15 +32,20 @@ final class ShiftMonitor: ObservableObject {
     @Published private(set) var hasEventPostingPermission = false
     @Published var showPermissionExplanation = false
     @Published var playbackError: String?
-    @Published var insertionError: String?
     @Published var showRestartConfirmation = false
     @Published var restartError: String?
     @Published private(set) var isRestarting = false
+    let microphone: MicrophoneRecordingSession
+    private var microphoneObservation: AnyCancellable?
 
     private let beepPlayer = BeepPlayer()
-    private let textInserter = ClipboardTextInserter()
     private let desktopOverlay = DesktopOverlayController()
-    private var insertionTasks: [UUID: Task<Void, Never>] = [:]
+    private lazy var voiceSession = VoiceSessionController(
+        microphone: microphone, overlay: desktopOverlay, player: RecordedAudioPlayer(),
+        onBegin: { [weak self] in self?.playBeep(.pressed) },
+        onExit: { [weak self] in self?.playBeep(.released) },
+        onError: { [weak self] error in self?.playbackError = error }
+    )
     private var chord = ShiftChordState()
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -86,7 +91,8 @@ final class ShiftMonitor: ObservableObject {
             configuration.activates = true
             _ = try await NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration)
         },
-        terminateCurrentInstance: @escaping @MainActor () -> Void = { NSApp.terminate(nil) }
+        terminateCurrentInstance: @escaping @MainActor () -> Void = { NSApp.terminate(nil) },
+        microphone: MicrophoneRecordingSession? = nil
     ) {
         self.defaults = defaults
         self.checkPermission = checkPermission
@@ -97,6 +103,10 @@ final class ShiftMonitor: ObservableObject {
         self.frontmostBundleIdentifier = frontmostBundleIdentifier
         self.launchNewInstance = launchNewInstance
         self.terminateCurrentInstance = terminateCurrentInstance
+        self.microphone = microphone ?? MicrophoneRecordingSession()
+        microphoneObservation = self.microphone.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
     }
 
     func start() {
@@ -136,8 +146,6 @@ final class ShiftMonitor: ObservableObject {
 
     func stop() {
         started = false
-        for task in insertionTasks.values { task.cancel() }
-        textInserter.restorePendingClipboard()
         permissionTimer?.invalidate()
         permissionTimer = nil
         if let wakeObserver {
@@ -224,6 +232,7 @@ final class ShiftMonitor: ObservableObject {
 
     func refreshPermission() {
         guard started else { return }
+        microphone.refreshPermission()
         // Posting and listening are independent permissions. Missing posting
         // access must not prevent the Shift tones from working.
         hasEventPostingPermission = checkEventPostingPermission()
@@ -286,7 +295,7 @@ final class ShiftMonitor: ObservableObject {
             rightPressed: flags & UInt64(NX_DEVICERSHIFTKEYMASK) != 0
         )
         desktopOverlay.start()
-        if chord.bothPressed { desktopOverlay.show() }
+        if chord.bothPressed { voiceSession.begin() }
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
         status = .monitoring
@@ -312,37 +321,18 @@ final class ShiftMonitor: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self, self.started, self.status == .monitoring,
                       self.tapGeneration == generation else { return }
-                // Do not flash an obsolete press if release was already received.
-                if self.chord.bothPressed == pressed {
-                    if pressed { self.desktopOverlay.show() }
-                    else { self.desktopOverlay.hide() }
+                if pressed {
+                    if self.chord.bothPressed { self.voiceSession.begin() }
+                } else {
+                    self.voiceSession.finish()
                 }
-                self.playBeep(pressed ? .pressed : .released)
-                if !pressed { self.insertGreeting() }
-            }
-        }
-    }
-
-    private func insertGreeting() {
-        hasEventPostingPermission = checkEventPostingPermission()
-        guard hasEventPostingPermission else { return }
-        let id = UUID()
-        insertionTasks[id] = Task { @MainActor [weak self] in
-            guard let self else { return }
-            defer { self.insertionTasks[id] = nil }
-            do {
-                try await self.textInserter.insert("hello, world")
-            } catch is CancellationError {
-                // Closing the app cancels pending pastes and restores the clipboard.
-            } catch {
-                self.insertionError = error.localizedDescription
             }
         }
     }
 
     private func stopTap() {
         tapGeneration = UUID()
-        desktopOverlay.hideImmediately()
+        voiceSession.stopImmediately()
         if let eventTap {
             CGEvent.tapEnable(tap: eventTap, enable: false)
             CFMachPortInvalidate(eventTap)

@@ -5,6 +5,84 @@ import XCTest
 
 final class DesktopOverlayControllerTests: XCTestCase {
     @MainActor
+    func testElapsedStatusMessagesAreUpdatedOnEveryScreen() throws {
+        var frames = [NSRect(x: 0, y: 0, width: 1000, height: 700)]
+        let overlay = DesktopOverlayController(screenFrames: { frames })
+        defer { overlay.stop() }
+        overlay.start()
+        overlay.setMessage("Listening... 13 seconds")
+        XCTAssertTrue(overlay.isListening)
+        overlay.setMessage("Speaking... 4 seconds")
+        XCTAssertFalse(overlay.isListening)
+        frames.append(NSRect(x: -1000, y: 0, width: 1000, height: 700))
+        overlay.refreshScreens()
+        for panel in overlay.panels {
+            let view = try XCTUnwrap(panel.contentView as? DesktopOverlayController.OverlayContentView)
+            XCTAssertEqual(view.statusLabel.stringValue, "Speaking...")
+            XCTAssertEqual(view.counterLabel.stringValue, "4 seconds")
+            XCTAssertFalse(view.counterLabel.isHidden)
+            XCTAssertEqual(view.counterLabel.font?.pointSize, 28)
+            XCTAssertEqual(view.counterLabel.textColor, NSColor.black.withAlphaComponent(0.55))
+            let font = try XCTUnwrap(view.counterLabel.font)
+            XCTAssertFalse(NSFontManager.shared.traits(of: font).contains(.boldFontMask))
+            view.layoutSubtreeIfNeeded()
+            XCTAssertLessThan(view.counterLabel.frame.maxY, view.statusLabel.frame.minY)
+            XCTAssertFalse(view.statusLabel.isHidden)
+        }
+    }
+
+    @MainActor
+    func testHideCompletionRunsOnlyAfterPanelsAreHidden() async throws {
+        let overlay = DesktopOverlayController(screenFrames: { [NSRect(x: 0, y: 0, width: 160, height: 120)] })
+        defer { overlay.stop() }
+        overlay.show()
+        var completions = 0
+        overlay.hide { completions += 1 }
+        XCTAssertEqual(completions, 0)
+        for _ in 0..<100 {
+            if completions > 0 { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(completions, 1)
+        XCTAssertTrue(overlay.panels.allSatisfy { !$0.isVisible })
+    }
+
+    @MainActor
+    func testListeningCaptionIsLargeBlackAndCenteredOnlyWhenRequested() throws {
+        let overlay = DesktopOverlayController(screenFrames: { [NSRect(x: 0, y: 0, width: 800, height: 600)] })
+        defer { overlay.stop() }
+        overlay.start()
+        let view = try XCTUnwrap(overlay.panels.first?.contentView as? DesktopOverlayController.OverlayContentView)
+        XCTAssertTrue(view.statusLabel.isHidden)
+        overlay.setListening(true)
+        view.layoutSubtreeIfNeeded()
+        XCTAssertEqual(view.statusLabel.stringValue, "Listening...")
+        XCTAssertEqual(view.statusLabel.font?.pointSize, 64)
+        XCTAssertEqual(view.statusLabel.textColor, .black)
+        XCTAssertFalse(view.statusLabel.isHidden)
+        XCTAssertEqual(view.statusLabel.frame.midX, view.bounds.midX, accuracy: 1)
+        XCTAssertEqual(view.statusLabel.frame.midY, view.bounds.midY, accuracy: 1)
+        overlay.hideImmediately()
+        XCTAssertTrue(view.statusLabel.isHidden)
+        XCTAssertFalse(overlay.isListening)
+    }
+
+    @MainActor
+    func testNewScreensInheritTheListeningCaption() {
+        var frames = [NSRect(x: 0, y: 0, width: 800, height: 600)]
+        let overlay = DesktopOverlayController(screenFrames: { frames })
+        defer { overlay.stop() }
+        overlay.start()
+        overlay.setListening(true)
+        frames.append(NSRect(x: -800, y: 0, width: 800, height: 600))
+        overlay.refreshScreens()
+        for panel in overlay.panels {
+            let view = panel.contentView as? DesktopOverlayController.OverlayContentView
+            XCTAssertEqual(view?.statusLabel.isHidden, false)
+        }
+    }
+
+    @MainActor
     func testQueuedDisplayNotificationCannotRecreatePanelsAfterStop() async {
         let overlay = DesktopOverlayController(screenFrames: { [NSRect(x: 0, y: 0, width: 160, height: 120)] })
         overlay.start()
