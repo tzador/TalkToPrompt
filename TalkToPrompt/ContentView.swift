@@ -61,7 +61,7 @@ struct ContentView: View {
         .sheet(isPresented: $showAPIKeyEntry) {
             APIKeyEntrySheet(
                 onSave: { key in
-                    try apiKey.save(key)
+                    try await apiKey.save(key)
                     showAPIKeyEntry = false
                 },
                 onCancel: { showAPIKeyEntry = false }

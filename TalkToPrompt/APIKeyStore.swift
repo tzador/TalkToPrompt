@@ -86,12 +86,16 @@ final class APIKeyModel: ObservableObject {
     @Published private(set) var maskedKey: String?
     @Published var errorMessage: String?
     private let storage: APIKeyStorage
+    private let validate: (String) async throws -> Void
 
     var isProvided: Bool { maskedKey != nil }
     var status: String { maskedKey.map { "Provided \($0)" } ?? "Not provided" }
 
-    init(storage: APIKeyStorage? = nil) {
+    init(storage: APIKeyStorage? = nil, validate: @escaping (String) async throws -> Void = {
+        try await OpenAITranscriber().validateAPIKey($0)
+    }) {
         self.storage = storage ?? KeychainAPIKeyStore()
+        self.validate = validate
     }
 
     func load() {
@@ -103,11 +107,14 @@ final class APIKeyModel: ObservableObject {
         }
     }
 
-    func save(_ input: String) throws {
+    func save(_ input: String) async throws {
         let key = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard key.count > 7, !key.contains(where: \.isWhitespace) else {
             throw ValidationError.invalidKey
         }
+        try Task.checkCancellation()
+        try await validate(key)
+        try Task.checkCancellation()
         try storage.save(key)
         maskedKey = Self.mask(key)
         errorMessage = nil

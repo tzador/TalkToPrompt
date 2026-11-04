@@ -26,7 +26,7 @@ private final class MemoryAPIKeyStorage: APIKeyStorage {
 
 final class APIKeyStoreTests: XCTestCase {
     @MainActor
-    func testKeychainRoundTripOverwriteAndClear() throws {
+    func testKeychainRoundTripOverwriteAndClear() async throws {
         // Use a unique service so tests never access the user's app credential.
         let service = "com.talktoprompt.tests.\(UUID().uuidString)"
         let store = KeychainAPIKeyStore(service: service)
@@ -44,7 +44,7 @@ final class APIKeyStoreTests: XCTestCase {
     }
 
     @MainActor
-    func testKeychainServicesRemainIsolated() throws {
+    func testKeychainServicesRemainIsolated() async throws {
         let first = KeychainAPIKeyStore(service: "com.talktoprompt.tests.\(UUID().uuidString)")
         let second = KeychainAPIKeyStore(service: "com.talktoprompt.tests.\(UUID().uuidString)")
         defer { try? first.clear(); try? second.clear() }
@@ -56,30 +56,30 @@ final class APIKeyStoreTests: XCTestCase {
 
     @MainActor
     func testMissingKeyShowsNotProvided() {
-        let model = APIKeyModel(storage: MemoryAPIKeyStorage())
+        let model = APIKeyModel(storage: MemoryAPIKeyStorage(), validate: { _ in })
         model.load()
         XCTAssertFalse(model.isProvided)
         XCTAssertEqual(model.status, "Not provided")
     }
 
     @MainActor
-    func testSaveTrimsInputAndOnlyDisplaysFirstThreeAndLastFourCharacters() throws {
+    func testSaveTrimsInputAndOnlyDisplaysFirstThreeAndLastFourCharacters() async throws {
         let storage = MemoryAPIKeyStorage()
-        let model = APIKeyModel(storage: storage)
-        try model.save(" \nsk-fake-test-key-TqUA\n ")
+        let model = APIKeyModel(storage: storage, validate: { _ in })
+        try await model.save(" \nsk-fake-test-key-TqUA\n ")
         XCTAssertEqual(storage.value, "sk-fake-test-key-TqUA")
         XCTAssertTrue(model.isProvided)
         XCTAssertEqual(model.status, "Provided sk-...TqUA")
-        let reloaded = APIKeyModel(storage: storage)
+        let reloaded = APIKeyModel(storage: storage, validate: { _ in })
         reloaded.load()
         XCTAssertEqual(reloaded.status, "Provided sk-...TqUA")
     }
 
     @MainActor
-    func testClearDeletesTheStoredValue() throws {
+    func testClearDeletesTheStoredValue() async throws {
         let storage = MemoryAPIKeyStorage()
-        let model = APIKeyModel(storage: storage)
-        try model.save("sk-fake-test-key")
+        let model = APIKeyModel(storage: storage, validate: { _ in })
+        try await model.save("sk-fake-test-key")
         model.clear()
         XCTAssertNil(storage.value)
         XCTAssertFalse(model.isProvided)
@@ -87,20 +87,20 @@ final class APIKeyStoreTests: XCTestCase {
     }
 
     @MainActor
-    func testFailedSaveDoesNotClaimTheKeyWasStored() {
+    func testFailedSaveDoesNotClaimTheKeyWasStored() async {
         let storage = MemoryAPIKeyStorage()
         storage.fail = true
-        let model = APIKeyModel(storage: storage)
-        XCTAssertThrowsError(try model.save("sk-fake-test-key"))
+        let model = APIKeyModel(storage: storage, validate: { _ in })
+        await assertSaveFails(model, "sk-fake-test-key")
         XCTAssertFalse(model.isProvided)
         XCTAssertNil(storage.value)
     }
 
     @MainActor
-    func testFailedClearPreservesProvidedStatusAndReportsError() throws {
+    func testFailedClearPreservesProvidedStatusAndReportsError() async throws {
         let storage = MemoryAPIKeyStorage()
-        let model = APIKeyModel(storage: storage)
-        try model.save("sk-fake-test-key")
+        let model = APIKeyModel(storage: storage, validate: { _ in })
+        try await model.save("sk-fake-test-key")
         let previousStatus = model.status
         storage.fail = true
         model.clear()
@@ -110,11 +110,11 @@ final class APIKeyStoreTests: XCTestCase {
     }
 
     @MainActor
-    func testInvalidInputDoesNotReachStorage() {
+    func testInvalidInputDoesNotReachStorage() async {
         let storage = MemoryAPIKeyStorage()
-        let model = APIKeyModel(storage: storage)
+        let model = APIKeyModel(storage: storage, validate: { _ in })
         for input in ["", "   \n", "short", "sk-invalid key"] {
-            XCTAssertThrowsError(try model.save(input))
+            await assertSaveFails(model, input)
         }
         XCTAssertNil(storage.value)
         XCTAssertFalse(model.isProvided)
@@ -124,16 +124,73 @@ final class APIKeyStoreTests: XCTestCase {
     func testShortExistingValueIsNeverFullyExposed() {
         let storage = MemoryAPIKeyStorage()
         storage.value = "tiny"
-        let model = APIKeyModel(storage: storage)
+        let model = APIKeyModel(storage: storage, validate: { _ in })
         model.load()
         XCTAssertEqual(model.status, "Provided ••••")
+    }
+
+    @MainActor
+    private func assertSaveFails(_ model: APIKeyModel, _ key: String) async {
+        do { try await model.save(key); XCTFail("Expected save failure") }
+        catch { }
+    }
+
+    @MainActor
+    func testValidationFailureNeverStoresOrReplacesAKey() async {
+        let storage = MemoryAPIKeyStorage()
+        storage.value = "sk-existing-key"
+        let model = APIKeyModel(storage: storage, validate: { _ in
+            throw OpenAITranscriber.TranscriptionError.rejected(401, false)
+        })
+        model.load()
+        let previous = model.status
+        await assertSaveFails(model, "sk-rejected-key")
+        XCTAssertEqual(storage.value, "sk-existing-key")
+        XCTAssertEqual(model.status, previous)
+    }
+
+    @MainActor
+    func testNoWriteBeforeValidationCompletesAndCandidateIsTrimmed() async throws {
+        let storage = MemoryAPIKeyStorage()
+        var reply: CheckedContinuation<Void, Never>?
+        var validated: String?
+        let model = APIKeyModel(storage: storage, validate: { key in
+            validated = key
+            await withCheckedContinuation { reply = $0 }
+        })
+        let task = Task { try await model.save("  sk-fake-validation-test  ") }
+        while reply == nil { await Task.yield() }
+        XCTAssertNil(storage.value)
+        XCTAssertFalse(model.isProvided)
+        XCTAssertEqual(validated, "sk-fake-validation-test")
+        reply?.resume()
+        try await task.value
+        XCTAssertEqual(storage.value, validated)
+        XCTAssertTrue(model.isProvided)
+    }
+
+    @MainActor
+    func testCancellationPreventsStorageEvenIfValidationReturnsSuccessLate() async {
+        let storage = MemoryAPIKeyStorage()
+        var reply: CheckedContinuation<Void, Never>?
+        let model = APIKeyModel(storage: storage, validate: { _ in
+            await withCheckedContinuation { reply = $0 }
+        })
+        let task = Task { try await model.save("sk-fake-cancelled-key") }
+        while reply == nil { await Task.yield() }
+        task.cancel()
+        reply?.resume()
+        do { try await task.value; XCTFail("Expected cancellation") }
+        catch { XCTAssertTrue(error is CancellationError) }
+        XCTAssertNil(storage.value)
+        XCTAssertFalse(model.isProvided)
     }
 
     @MainActor
     func testLoadFailureIsReported() {
         let storage = MemoryAPIKeyStorage()
         storage.fail = true
-        let model = APIKeyModel(storage: storage)
+        let model = APIKeyModel(storage: storage, validate: { _ in })
         model.load()
         XCTAssertNotNil(model.errorMessage)
         XCTAssertFalse(model.isProvided)

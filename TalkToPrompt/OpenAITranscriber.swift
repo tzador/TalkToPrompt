@@ -20,6 +20,22 @@ struct OpenAITranscriber: AudioTranscribing {
     }
 
     func transcribe(_ recording: MicrophoneRecording, apiKey: String) async throws -> String {
+        let text = try await requestTranscript(recording, apiKey: apiKey)
+        guard !text.isEmpty else { throw TranscriptionError.emptyTranscript }
+        return text
+    }
+
+    /// Checks the actual transcription endpoint, including model access and quota.
+    /// Silence may legitimately return an empty transcript; HTTP success is enough.
+    func validateAPIKey(_ key: String) async throws {
+        let silence = MicrophoneRecording(
+            sampleRate: 16_000, channelCount: 1, commonFormat: .pcmFormatInt16,
+            isInterleaved: true, chunks: [.init(frameCount: 16_000, planes: [Data(count: 32_000)])]
+        )
+        _ = try await requestTranscript(silence, apiKey: key)
+    }
+
+    private func requestTranscript(_ recording: MicrophoneRecording, apiKey: String) async throws -> String {
         // Reject oversized PCM before allocating another copy for encoding/upload.
         guard recording.chunks.reduce(UInt64(44), { total, chunk in
             total + chunk.planes.reduce(UInt64(0)) { $0 + UInt64($1.count) }
@@ -52,20 +68,21 @@ struct OpenAITranscriber: AudioTranscribing {
         try Task.checkCancellation()
         guard let http = response as? HTTPURLResponse else { throw TranscriptionError.invalidResponse }
         guard (200..<300).contains(http.statusCode) else {
-            let quota = (try? JSONDecoder().decode(APIError.self, from: data))?.error.code == "insufficient_quota"
+            let detail = (try? JSONDecoder().decode(APIError.self, from: data))?.error
+            let quotaCodes: Set<String> = ["insufficient_quota", "credit_balance_exhausted",
+                "organization_spend_limit_exceeded", "project_spend_limit_exceeded", "organization_usage_limit_exceeded"]
+            let quota = detail?.type == "insufficient_quota" || quotaCodes.contains(detail?.code ?? "")
             throw TranscriptionError.rejected(http.statusCode, quota)
         }
         guard let result = try? JSONDecoder().decode(Transcript.self, from: data) else {
             throw TranscriptionError.invalidResponse
         }
-        let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { throw TranscriptionError.emptyTranscript }
-        return text
+        return result.text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private struct Transcript: Decodable { let text: String }
     private struct APIError: Decodable {
-        struct Detail: Decodable { let code: String? }
+        struct Detail: Decodable { let code: String?; let type: String? }
         let error: Detail
     }
 

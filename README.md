@@ -46,7 +46,7 @@ The latest recording remains in RAM until the next recording or app exit. Audio 
 
 The API key status bubble shows **Not provided** or **Provided sk-...TqUA**, using only the key’s first three and last four characters. It is orange when missing and green when provided.
 
-Choose **Enter** to open a secure input dialog. **OK** stores the key in the macOS Keychain as a generic-password item with account **OPENAI_API_KEY** and the app’s bundle identifier as its service. **Cancel** closes the dialog without saving. **Clear** deletes only that Keychain item. The key is loaded at startup and is never written to a preferences file or repository configuration.
+Choose **Enter** to open a secure input dialog. **OK** first changes the popup to **Validating API key...** and sends one second of generated silence to the same OpenAI transcription endpoint and model used for recordings (a small API charge may apply). Only a successful, valid response allows saving; the silent test may return an empty transcript. The key is not stored during validation. Invalid keys, quota/billing failures, unavailable service, and network errors return to the input UI with a readable error so you can edit the key or retry. **Cancel** cancels validation and prevents saving even if a response arrives later. On success, the popup closes and stores the key in the macOS Keychain as a generic-password item with account **OPENAI_API_KEY** and the app’s bundle identifier as its service. **Cancel** closes the dialog without saving. **Clear** deletes only that Keychain item. The key is loaded at startup and is never written to a preferences file or repository configuration.
 
 ## Run in Xcode
 

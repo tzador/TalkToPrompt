@@ -243,6 +243,36 @@ final class OpenAITranscriberTests: XCTestCase {
         XCTAssertEqual(text, "Hello, 世界!")
     }
 
+    func testAPIKeyValidationUsesSilentAudioAndAcceptsEmptyTranscript() async throws {
+        let client = OpenAITranscriber { request in
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer sk-fake-validation")
+            let body = try XCTUnwrap(request.httpBody)
+            let marker = Data("RIFF".utf8)
+            let range = try XCTUnwrap(body.range(of: marker))
+            // Standard 44-byte WAV header, followed by exactly 32000 silent bytes.
+            let start = range.lowerBound + 44
+            XCTAssertEqual(body.subdata(in: start..<(start + 32000)), Data(count: 32000))
+            return (Data("{\"text\":\"\"}".utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        try await client.validateAPIKey("sk-fake-validation")
+    }
+
+    func testAPIKeyValidationRejectsBillingAndInvalidKeyErrors() async {
+        for (status, code, type) in [(401, "invalid_api_key", "invalid_request_error"),
+                                    (429, "credit_balance_exhausted", "insufficient_quota"),
+                                    (429, "project_spend_limit_exceeded", "insufficient_quota"),
+                                    (429, "new_quota_code", "insufficient_quota")] {
+            let client = OpenAITranscriber { request in
+                let json = "{\"error\":{\"code\":\"\(code)\",\"type\":\"\(type)\"}}"
+                return (Data(json.utf8), HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!)
+            }
+            do { try await client.validateAPIKey("sk-fake"); XCTFail("Expected validation failure") }
+            catch {
+                XCTAssertTrue(error.localizedDescription.contains(status == 401 ? "API key" : "credits"))
+            }
+        }
+    }
+
     func testHTTPFailuresAreHumanReadableAndDoNotExposeServerContent() async {
         for status in [400, 401, 403, 413, 429, 500] {
             let client = OpenAITranscriber { request in
