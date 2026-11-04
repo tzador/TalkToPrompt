@@ -12,11 +12,14 @@ protocol VoiceSessionOverlay: AnyObject {
 /// Owns one hold → transcription → paste → close session. New holds cannot interrupt it.
 @MainActor
 final class VoiceSessionController {
-    enum Phase: Equatable { case idle, missingAPIKey, preparing, listening, transcribing, closing }
+    enum Phase: Equatable { case idle, missingAPIKey, preparing, listening, transcribing, translating, closing }
     private(set) var phase: Phase = .idle
     private let microphone: MicrophoneRecordingSession
     private let overlay: VoiceSessionOverlay
     private let transcriber: AudioTranscribing
+    private let translator: TextTranslating
+    private let language: DictationLanguageModel?
+    private var targetLanguage: TranslationLanguage?
     private let loadAPIKey: () throws -> String?
     private let insertText: (String) async throws -> Void
     private let restoreClipboard: () -> Void
@@ -40,11 +43,15 @@ final class VoiceSessionController {
         now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
         onBegin: @escaping () -> Void = {},
         onExit: @escaping () -> Void = {},
-        onError: @escaping (String) -> Void = { _ in }
+        onError: @escaping (String) -> Void = { _ in },
+        language: DictationLanguageModel? = nil,
+        translator: TextTranslating = OpenAITranslator()
     ) {
         self.microphone = microphone
         self.overlay = overlay
         self.transcriber = transcriber
+        self.translator = translator
+        self.language = language
         self.loadAPIKey = loadAPIKey
         self.insertText = insertText
         self.restoreClipboard = restoreClipboard
@@ -61,6 +68,7 @@ final class VoiceSessionController {
     func begin() -> Bool {
         guard phase == .idle else { return false }
         generation = UUID()
+        targetLanguage = language?.activeLanguage
         phase = .preparing
         overlay.setMessage(nil)
         overlay.show()
@@ -99,7 +107,19 @@ final class VoiceSessionController {
                     self.close()
                     return
                 }
-                try await self.insertText(text)
+                if self.language?.handleCommand(text) == true {
+                    self.overlay.setMessage("Language: \(self.language?.displayName ?? "Auto")")
+                    self.close()
+                    return
+                }
+                let output: String
+                if let target = self.targetLanguage {
+                    self.phase = .translating
+                    self.overlay.setMessage("Translating...")
+                    output = try await self.translator.translate(text, to: target, apiKey: key)
+                    guard self.generation == id, !Task.isCancelled else { return }
+                } else { output = text }
+                try await self.insertText(output)
                 guard self.generation == id, !Task.isCancelled else { return }
                 self.close()
             } catch {
@@ -120,6 +140,7 @@ final class VoiceSessionController {
         transcriptionTask = nil
         microphone.finish()
         apiKey = nil
+        targetLanguage = nil
         restoreClipboard()
         stopTimer()
         overlay.hideImmediately()
@@ -151,6 +172,7 @@ final class VoiceSessionController {
         transcriptionTask = nil
         microphone.finish()
         apiKey = nil
+        targetLanguage = nil
         restoreClipboard()
         stopTimer()
         onExit()

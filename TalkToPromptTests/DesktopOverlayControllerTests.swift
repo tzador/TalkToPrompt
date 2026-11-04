@@ -5,29 +5,31 @@ import XCTest
 
 final class DesktopOverlayControllerTests: XCTestCase {
     @MainActor
-    func testListeningDotsAnimateWithoutResettingWhenCounterUpdates() async throws {
+    func testStatusDotsAnimateWithoutResettingOrMovingText() async throws {
         let overlay = DesktopOverlayController(screenFrames: { [NSRect(x: 0, y: 0, width: 800, height: 600)] })
         defer { overlay.stop() }
         overlay.start()
-        overlay.setMessage("Listening... 0 seconds")
-        let view = try XCTUnwrap(overlay.panels.first?.contentView as? DesktopOverlayController.OverlayContentView)
-        view.layoutSubtreeIfNeeded()
-        let initialFrame = view.statusLabel.frame
-        let firstDot = ("Listening" as NSString).length
-        func firstDotColor() -> NSColor? {
-            view.statusLabel.attributedStringValue.attribute(.foregroundColor, at: firstDot, effectiveRange: nil) as? NSColor
+        for (message, update) in [("Listening... 0 seconds", "Listening... 2 seconds"),
+                                  ("Transcribing...", "Transcribing..."), ("Translating...", "Translating...")] {
+            overlay.setMessage(message)
+            let view = try XCTUnwrap(overlay.panels.first?.contentView as? DesktopOverlayController.OverlayContentView)
+            view.layoutSubtreeIfNeeded()
+            let initialFrame = view.statusLabel.frame
+            let firstDot = (view.statusLabel.stringValue as NSString).range(of: "...").location
+            func firstDotColor() -> NSColor? {
+                view.statusLabel.attributedStringValue.attribute(.foregroundColor, at: firstDot, effectiveRange: nil) as? NSColor
+            }
+            XCTAssertEqual(firstDotColor(), .clear)
+            for _ in 0..<100 {
+                if firstDotColor() == .white { break }
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            XCTAssertEqual(firstDotColor(), .white)
+            overlay.setMessage(update)
+            XCTAssertEqual(firstDotColor(), .white)
+            view.layoutSubtreeIfNeeded()
+            XCTAssertEqual(view.statusLabel.frame, initialFrame)
         }
-        XCTAssertEqual(firstDotColor(), .clear)
-        for _ in 0..<100 {
-            if firstDotColor() == .white { break }
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        XCTAssertEqual(firstDotColor(), .white)
-        overlay.setMessage("Listening... 1 seconds")
-        XCTAssertEqual(firstDotColor(), .white)
-        XCTAssertEqual(view.counterLabel.stringValue, "1 seconds")
-        view.layoutSubtreeIfNeeded()
-        XCTAssertEqual(view.statusLabel.frame, initialFrame)
     }
 
     @MainActor

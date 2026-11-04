@@ -42,6 +42,7 @@ final class ShiftMonitor: ObservableObject {
         }
     }
     let microphone: MicrophoneRecordingSession
+    let language: DictationLanguageModel
     private var microphoneObservation: AnyCancellable?
 
     private let beepPlayer = BeepPlayer()
@@ -57,7 +58,8 @@ final class ShiftMonitor: ObservableObject {
         onError: { [weak self] error in
             self?.transcriptionError = error
             NSApp.activate(ignoringOtherApps: true)
-        }
+        },
+        language: language
     )
     private var chord = ShiftChordState()
     private var eventTap: CFMachPort?
@@ -111,7 +113,8 @@ final class ShiftMonitor: ObservableObject {
             _ = try await NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration)
         },
         terminateCurrentInstance: @escaping @MainActor () -> Void = { NSApp.terminate(nil) },
-        microphone: MicrophoneRecordingSession? = nil
+        microphone: MicrophoneRecordingSession? = nil,
+        language: DictationLanguageModel? = nil
     ) {
         self.defaults = defaults
         self.checkPermission = checkPermission
@@ -123,6 +126,7 @@ final class ShiftMonitor: ObservableObject {
         self.launchNewInstance = launchNewInstance
         self.terminateCurrentInstance = terminateCurrentInstance
         self.microphone = microphone ?? MicrophoneRecordingSession()
+        self.language = language ?? DictationLanguageModel()
         microphoneObservation = self.microphone.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
         }

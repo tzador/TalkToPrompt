@@ -79,7 +79,7 @@ final class DesktopOverlayController: VoiceSessionOverlay {
             guard let separator = message.range(of: "... ") else { return message }
             return String(message[..<separator.lowerBound]) + "..."
         }
-        let animatedStatus = ["Listening...", "Transcribing..."].contains(status ?? "") ? status : nil
+        let animatedStatus = ["Listening...", "Transcribing...", "Translating..."].contains(status ?? "") ? status : nil
         if self.animatedStatus != animatedStatus {
             dotsTimer?.invalidate()
             dotsTimer = nil
@@ -259,7 +259,7 @@ final class DesktopOverlayController: VoiceSessionOverlay {
             }
             statusLabel.isHidden = message == nil
             counterLabel.isHidden = counterLabel.stringValue.isEmpty
-            animatesDots = ["Listening...", "Transcribing..."].contains(statusLabel.stringValue)
+            animatesDots = ["Listening...", "Transcribing...", "Translating..."].contains(statusLabel.stringValue)
             setDotCount(dotCount)
         }
 

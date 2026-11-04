@@ -5,6 +5,7 @@ struct ContentView: View {
     @ObservedObject var apiKey: APIKeyModel
     @ObservedObject var onboarding: OnboardingModel
     @ObservedObject var launchAtLogin: LaunchAtLoginModel
+    @ObservedObject var language: DictationLanguageModel
     @State private var showAPIKeyEntry = false
     var modalChanged: (Bool) -> Void = { _ in }
     var openSetup: () -> Void = {}
@@ -17,7 +18,8 @@ struct ContentView: View {
             apiKeyStatus: apiKey.status, hasAPIKey: apiKey.isProvided,
             apiKeyUnavailable: apiKey.errorMessage != nil, needsSetup: !onboarding.hasCompleted,
             loginRequested: launchAtLogin.isRequested, loginNeedsApproval: launchAtLogin.needsApproval,
-            loginStatus: launchAtLogin.statusText, loginError: launchAtLogin.errorMessage
+            loginStatus: launchAtLogin.statusText, loginError: launchAtLogin.errorMessage,
+            languageName: language.displayName
         ), actions: .init(
             apiKey: { showAPIKeyEntry = true }, clearAPIKey: { apiKey.clear() }, setup: openSetup,
             setLogin: { launchAtLogin.setEnabled($0) },
@@ -77,7 +79,7 @@ struct AppAlerts: ViewModifier {
         if monitor.restartError != nil { return "Unable to Restart" }
         if apiKey.errorMessage != nil { return "Unable to Access API Key" }
         if monitor.microphone.errorMessage != nil { return "Unable to Record Audio" }
-        if monitor.transcriptionError != nil { return "Unable to Transcribe or Paste" }
+        if monitor.transcriptionError != nil { return "Unable to Complete Dictation" }
         return "Unable to Play Audio"
     }
 

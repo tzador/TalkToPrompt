@@ -80,7 +80,7 @@ struct OnboardingView: View {
         case .apiKey:
             explanation("Your recordings go directly to OpenAI.",
                         detail: "TalkToPrompt keeps audio in memory and never saves audio files or routes it through our servers. OpenAI receives the recording to transcribe it, under its own data policies.")
-            Text("Bring your own OpenAI API key. It is validated before being saved in this app's macOS Keychain item. API usage is billed by OpenAI.")
+            Text("Bring your own OpenAI API key. It is validated before being saved in this app's macOS Keychain item. API usage is billed by OpenAI. If you select a translation language, the transcript is also sent to OpenAI for translation.")
                 .font(.callout).foregroundStyle(.secondary)
             Text("By connecting a key and using dictation, you choose to send your recordings directly to OpenAI for transcription.")
                 .font(.caption).foregroundStyle(.secondary)

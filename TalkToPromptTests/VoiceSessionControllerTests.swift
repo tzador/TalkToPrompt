@@ -60,11 +60,26 @@ private actor SessionTranscriber: AudioTranscribing {
     func setFailure() { fail = true }
 }
 
+private actor SessionTranslator: TextTranslating {
+    var requests: [(String, TranslationLanguage)] = []
+    var fail = false
+    private var pending: CheckedContinuation<String, Error>?
+    func translate(_ text: String, to language: TranslationLanguage, apiKey: String) async throws -> String {
+        requests.append((text, language))
+        if fail { throw OpenAITranslator.TranslationError.rejected(429, true) }
+        return try await withCheckedThrowingContinuation { pending = $0 }
+    }
+    func complete(_ text: String) { pending?.resume(returning: text); pending = nil }
+    func setFailure() { fail = true }
+}
+
 @MainActor
 private final class VoiceFixture {
     let capture = SessionCapture()
     let overlay = SessionOverlay()
     let transcriber = SessionTranscriber()
+    let translator = SessionTranslator()
+    let language = DictationLanguageModel(defaults: UserDefaults(suiteName: UUID().uuidString)!)
     var key: String? = "sk-test-only"
     var pasted: [String] = []
     var restores = 0
@@ -85,7 +100,8 @@ private final class VoiceFixture {
         now: { [unowned self] in clock },
         onBegin: { [unowned self] in begins += 1 },
         onExit: { [unowned self] in exits += 1 },
-        onError: { [unowned self] in errors.append($0) }
+        onError: { [unowned self] in errors.append($0) },
+        language: language, translator: translator
     )
 }
 
@@ -105,6 +121,117 @@ final class VoiceSessionControllerTests: XCTestCase {
         await waitUntil { await fixture.capture.starts.count == 1 }
         await fixture.capture.firstAudio()
         await waitUntil { fixture.voice.phase == .listening }
+    }
+
+    @MainActor
+    func testExplicitTranslationCommandsSwitchModeWithoutTranslatingOrPasting() async {
+        for (command, expected) in [("Translate to Ukrainian.", "uk"), ("TRANSLATE TO SPANISH!", "es"), ("Don’t translate.", "auto"), ("No translation", "auto"), ("Translation off.", "auto"), ("Translation none", "auto")] {
+            let f = VoiceFixture()
+            f.language.handleCommand("Translate to German")
+            await listen(f)
+            f.voice.finish()
+            await waitUntil { await f.transcriber.requests == 1 }
+            await f.transcriber.complete(text: command)
+            await waitUntil { f.voice.phase == .closing }
+            XCTAssertEqual(f.language.activeLanguage?.code ?? "auto", expected)
+            XCTAssertEqual(f.overlay.message, "Language: " + f.language.displayName)
+            let translations = await f.translator.requests
+            XCTAssertTrue(translations.isEmpty)
+            XCTAssertTrue(f.pasted.isEmpty)
+            f.overlay.completeFade()
+            f.voice.stopImmediately()
+        }
+    }
+
+    @MainActor
+    func testTargetLanguageAddsTranslationBetweenTranscriptionAndPaste() async {
+        let f = VoiceFixture()
+        defer { f.voice.stopImmediately() }
+        f.language.handleCommand("Translate to Spanish")
+        await listen(f)
+        XCTAssertEqual(f.overlay.message, "Listening... 0 seconds")
+        f.voice.finish()
+        XCTAssertEqual(f.overlay.message, "Transcribing...")
+        await waitUntil { await f.transcriber.requests == 1 }
+        await f.transcriber.complete(text: "Hello, world")
+        await waitUntil { await f.translator.requests.count == 1 }
+        XCTAssertEqual(f.voice.phase, .translating)
+        XCTAssertEqual(f.overlay.message, "Translating...")
+        let request = await f.translator.requests[0]
+        XCTAssertEqual(request.0, "Hello, world")
+        XCTAssertEqual(request.1.code, "es")
+        XCTAssertTrue(f.pasted.isEmpty)
+        XCTAssertFalse(f.voice.begin())
+        f.voice.finish() // Releasing an ignored chord cannot interrupt translation.
+        await f.translator.complete("Hola, mundo")
+        await waitUntil { f.voice.phase == .closing }
+        XCTAssertEqual(f.pasted, ["Hola, mundo"])
+        f.overlay.completeFade()
+        XCTAssertTrue(f.errors.isEmpty)
+    }
+
+    @MainActor
+    func testAutoModeDoesNotCallTranslation() async {
+        let f = VoiceFixture()
+        defer { f.voice.stopImmediately() }
+        await listen(f)
+        f.voice.finish()
+        await waitUntil { await f.transcriber.requests == 1 }
+        await f.transcriber.complete(text: "Добрий день")
+        await waitUntil { f.voice.phase == .closing }
+        XCTAssertEqual(f.pasted, ["Добрий день"])
+        let translations = await f.translator.requests
+        XCTAssertTrue(translations.isEmpty)
+    }
+
+    @MainActor
+    func testBareLanguageNamesAndAutoArePastedAsOrdinaryDictation() async {
+        for text in ["Spanish.", "Greek", "Persian", "Ukrainian", "Auto"] {
+            let f = VoiceFixture()
+            await listen(f)
+            f.voice.finish()
+            await waitUntil { await f.transcriber.requests == 1 }
+            await f.transcriber.complete(text: text)
+            await waitUntil { f.voice.phase == .closing }
+            XCTAssertEqual(f.pasted, [text])
+            XCTAssertNil(f.language.activeLanguage)
+            f.voice.stopImmediately()
+        }
+    }
+
+    @MainActor
+    func testTranslationFailureDoesNotPasteAndShowsErrorAfterFade() async {
+        let f = VoiceFixture()
+        defer { f.voice.stopImmediately() }
+        f.language.handleCommand("Translate to Ukrainian")
+        await f.translator.setFailure()
+        await listen(f)
+        f.voice.finish()
+        await waitUntil { await f.transcriber.requests == 1 }
+        await f.transcriber.complete()
+        await waitUntil { f.voice.phase == .closing }
+        XCTAssertTrue(f.pasted.isEmpty)
+        XCTAssertTrue(f.errors.isEmpty)
+        f.overlay.completeFade()
+        XCTAssertTrue(f.errors.first?.contains("credits") == true)
+    }
+
+    @MainActor
+    func testShutdownDuringTranslationPreventsLatePaste() async {
+        let f = VoiceFixture()
+        f.language.handleCommand("Translate to Spanish")
+        await listen(f)
+        f.voice.finish()
+        await waitUntil { await f.transcriber.requests == 1 }
+        await f.transcriber.complete()
+        await waitUntil { await f.translator.requests.count == 1 }
+        f.voice.stopImmediately()
+        await f.translator.complete("Hola, mundo")
+        try? await Task.sleep(for: .milliseconds(20))
+        XCTAssertTrue(f.pasted.isEmpty)
+        XCTAssertTrue(f.errors.isEmpty)
+        XCTAssertEqual(f.voice.phase, .idle)
+        XCTAssertFalse(f.overlay.visible)
     }
 
     @MainActor
