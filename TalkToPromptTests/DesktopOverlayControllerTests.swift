@@ -5,6 +5,32 @@ import XCTest
 
 final class DesktopOverlayControllerTests: XCTestCase {
     @MainActor
+    func testListeningDotsAnimateWithoutResettingWhenCounterUpdates() async throws {
+        let overlay = DesktopOverlayController(screenFrames: { [NSRect(x: 0, y: 0, width: 800, height: 600)] })
+        defer { overlay.stop() }
+        overlay.start()
+        overlay.setMessage("Listening... 0 seconds")
+        let view = try XCTUnwrap(overlay.panels.first?.contentView as? DesktopOverlayController.OverlayContentView)
+        view.layoutSubtreeIfNeeded()
+        let initialFrame = view.statusLabel.frame
+        let firstDot = ("Listening" as NSString).length
+        func firstDotColor() -> NSColor? {
+            view.statusLabel.attributedStringValue.attribute(.foregroundColor, at: firstDot, effectiveRange: nil) as? NSColor
+        }
+        XCTAssertEqual(firstDotColor(), .clear)
+        for _ in 0..<100 {
+            if firstDotColor() == .black { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(firstDotColor(), .black)
+        overlay.setMessage("Listening... 1 seconds")
+        XCTAssertEqual(firstDotColor(), .black)
+        XCTAssertEqual(view.counterLabel.stringValue, "1 seconds")
+        view.layoutSubtreeIfNeeded()
+        XCTAssertEqual(view.statusLabel.frame, initialFrame)
+    }
+
+    @MainActor
     func testElapsedStatusMessagesAreUpdatedOnEveryScreen() throws {
         var frames = [NSRect(x: 0, y: 0, width: 1000, height: 700)]
         let overlay = DesktopOverlayController(screenFrames: { frames })

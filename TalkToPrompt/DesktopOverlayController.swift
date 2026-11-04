@@ -9,6 +9,9 @@ final class DesktopOverlayController: VoiceSessionOverlay {
     private let screenFrames: () -> [NSRect]
     private var screenObserver: NSObjectProtocol?
     private var hideTask: Task<Void, Never>?
+    private var dotsTimer: Timer?
+    private var dotCount = 0
+    private var animatedStatus: String?
     private(set) var panels: [OverlayPanel] = []
     private(set) var isVisible = false
     private(set) var isListening = false
@@ -72,9 +75,34 @@ final class DesktopOverlayController: VoiceSessionOverlay {
     func setMessage(_ message: String?) {
         self.message = message
         isListening = message?.hasPrefix("Listening...") == true
+        let status = message.map { message in
+            guard let separator = message.range(of: "... ") else { return message }
+            return String(message[..<separator.lowerBound]) + "..."
+        }
+        let animatedStatus = ["Listening...", "Transcribing..."].contains(status ?? "") ? status : nil
+        if self.animatedStatus != animatedStatus {
+            dotsTimer?.invalidate()
+            dotsTimer = nil
+            dotCount = 0
+            self.animatedStatus = animatedStatus
+            if animatedStatus != nil {
+                let timer = Timer(timeInterval: 0.4, repeats: true) { [weak self] _ in
+                    MainActor.assumeIsolated {
+                        guard let self else { return }
+                        self.dotCount = (self.dotCount + 1) % 4
+                        for panel in self.panels {
+                            (panel.contentView as? OverlayContentView)?.setDotCount(self.dotCount)
+                        }
+                    }
+                }
+                RunLoop.main.add(timer, forMode: .common)
+                dotsTimer = timer
+            }
+        }
         for panel in panels {
             guard let view = panel.contentView as? OverlayContentView else { continue }
             view.setMessage(message)
+            view.setDotCount(dotCount)
         }
     }
 
@@ -97,6 +125,7 @@ final class DesktopOverlayController: VoiceSessionOverlay {
             let panel = OverlayPanel(frame: frame)
             let view = panel.contentView as? OverlayContentView
             view?.setMessage(message)
+            view?.setDotCount(dotCount)
             return panel
         }
         if isVisible {
@@ -178,6 +207,8 @@ final class DesktopOverlayController: VoiceSessionOverlay {
         let whiteTint = NSView()
         let statusLabel = NSTextField(labelWithString: "")
         let counterLabel = NSTextField(labelWithString: "")
+        private var animatesDots = false
+        private var dotCount = 0
 
         override init(frame: NSRect) {
             super.init(frame: frame)
@@ -240,6 +271,27 @@ final class DesktopOverlayController: VoiceSessionOverlay {
             }
             statusLabel.isHidden = message == nil
             counterLabel.isHidden = counterLabel.stringValue.isEmpty
+            animatesDots = ["Listening...", "Transcribing..."].contains(statusLabel.stringValue)
+            setDotCount(dotCount)
+        }
+
+        func setDotCount(_ count: Int) {
+            dotCount = count
+            guard animatesDots else { return }
+            // Keep all three glyphs in the layout and only change their ink.
+            // This preserves the word's position throughout the entire cycle.
+            let text = statusLabel.stringValue
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.alignment = .center
+            let attributed = NSMutableAttributedString(string: text, attributes: [
+                .font: statusLabel.font ?? NSFont.systemFont(ofSize: 64, weight: .bold),
+                .foregroundColor: NSColor.black,
+                .paragraphStyle: paragraph
+            ])
+            attributed.addAttribute(.foregroundColor, value: NSColor.clear,
+                                    range: NSRange(location: (text as NSString).length - 3 + count,
+                                                   length: 3 - count))
+            statusLabel.attributedStringValue = attributed
         }
 
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
