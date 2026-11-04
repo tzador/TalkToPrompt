@@ -1,46 +1,25 @@
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject private var monitor = ShiftMonitor()
-    @StateObject private var apiKey = APIKeyModel()
-    @StateObject private var launchAtLogin = LaunchAtLoginModel()
+    @ObservedObject var monitor: ShiftMonitor
+    @ObservedObject var apiKey: APIKeyModel
+    @ObservedObject var launchAtLogin: LaunchAtLoginModel
     @State private var showAPIKeyEntry = false
-    @State private var dockIcon = DockIconController()
-    @Environment(\.scenePhase) private var scenePhase
+    var modalChanged: (Bool) -> Void = { _ in }
+    var willOpenSystemSettings: () -> Void = {}
 
     var body: some View {
         NativeCalmView(state: nativeCalmState, actions: .init(
-            inputMonitoring: { monitor.openInputMonitoringSettings() },
-            accessibility: { monitor.openAccessibilitySettings() },
-            microphone: { Task { await monitor.microphone.openSettings() } },
-            apiKey: {
-                if apiKey.isProvided { apiKey.clear() }
-                else { showAPIKeyEntry = true }
-            },
+            inputMonitoring: { openSettings { monitor.openInputMonitoringSettings() } },
+            accessibility: { openSettings { monitor.openAccessibilitySettings() } },
+            microphone: { openSettings { Task { await monitor.microphone.openSettings() } } },
+            apiKey: { showAPIKeyEntry = true },
             setLogin: { launchAtLogin.setEnabled($0) },
-            loginSettings: { launchAtLogin.openLoginItemsSettings() }
+            loginSettings: { openSettings { launchAtLogin.openLoginItemsSettings() } },
+            clearAPIKey: { apiKey.clear() }
         ))
-        .onAppear {
-            monitor.start()
-            apiKey.load()
-            launchAtLogin.refresh()
-        }
-        .onChange(of: dockIconState, initial: true) { _, state in
-            dockIcon.update(state)
-        }
-        .onDisappear {
-            monitor.stop()
-            dockIcon.restore()
-        }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active {
-                launchAtLogin.refresh()
-                monitor.applicationActivated(bundleIdentifier: Bundle.main.bundleIdentifier)
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
-            dockIcon.restore()
-            monitor.stop()
+        .onChange(of: hasModal, initial: true) { _, showing in
+            modalChanged(showing)
         }
         .sheet(isPresented: $monitor.showPermissionExplanation) {
             VStack(spacing: 16) {
@@ -53,13 +32,13 @@ struct ContentView: View {
                     if monitor.hasInputMonitoringPermission {
                         Label("Input Monitoring: Permission granted", systemImage: "checkmark.circle")
                     } else {
-                        Button("Open System Settings") { monitor.openInputMonitoringSettings() }
+                        Button("Open System Settings") { openSettings { monitor.openInputMonitoringSettings() } }
                             .help("Open Input Monitoring settings")
                     }
                     if monitor.hasEventPostingPermission {
                         Label("Accessibility: Permission granted", systemImage: "checkmark.circle")
                     } else {
-                        Button("Open System Settings") { monitor.openAccessibilitySettings() }
+                        Button("Open System Settings") { openSettings { monitor.openAccessibilitySettings() } }
                             .help("Open Accessibility settings")
                     }
                 }
@@ -108,13 +87,17 @@ struct ContentView: View {
         }
     }
 
-    private var dockIconState: DockIconController.State {
-        .permissions(
-            inputMonitoring: monitor.hasInputMonitoringPermission,
-            accessibility: monitor.hasEventPostingPermission,
-            microphone: monitor.microphone.authorization == .authorized,
-            apiKey: apiKey.isProvided
-        )
+    private func openSettings(_ action: () -> Void) {
+        monitor.showPermissionExplanation = false
+        willOpenSystemSettings()
+        action()
+    }
+
+    private var hasModal: Bool {
+        showAPIKeyEntry || monitor.showPermissionExplanation || monitor.showRestartConfirmation
+            || monitor.playbackError != nil || monitor.restartError != nil || apiKey.errorMessage != nil
+            || monitor.microphone.errorMessage != nil || monitor.transcriptionError != nil
+            || launchAtLogin.errorMessage != nil
     }
 
     private var alertTitle: String {
@@ -155,5 +138,5 @@ struct ContentView: View {
 }
 
 #Preview {
-    ContentView()
+    ContentView(monitor: ShiftMonitor(), apiKey: APIKeyModel(), launchAtLogin: LaunchAtLoginModel())
 }

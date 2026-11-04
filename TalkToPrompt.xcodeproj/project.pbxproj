@@ -10,7 +10,6 @@
         F00000000000000000000004 = {isa = PBXBuildFile; fileRef = F00000000000000000000003; };
         E00000000000000000000002 = {isa = PBXBuildFile; fileRef = E00000000000000000000001; };
         E00000000000000000000004 = {isa = PBXBuildFile; fileRef = E00000000000000000000003; };
-        E00000000000000000000006 = {isa = PBXBuildFile; fileRef = E00000000000000000000005; };
         E00000000000000000000008 = {isa = PBXBuildFile; fileRef = E00000000000000000000007; };
         D00000000000000000000002 /* TalkToPromptIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = D00000000000000000000001 /* TalkToPromptIcon.icon */; };
         C00000000000000000000003 /* LaunchAtLoginModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000002; };
@@ -44,10 +43,9 @@
 /* Begin PBXFileReference section */
         F00000000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCalmView.swift; sourceTree = "<group>"; };
         F00000000000000000000003 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCalmViewTests.swift; sourceTree = "<group>"; };
-        E00000000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockIconController.swift; sourceTree = "<group>"; };
-        E00000000000000000000003 = {isa = PBXFileReference; lastKnownFileType = image.icns; path = DockIcons/DockIconReady.icns; sourceTree = "<group>"; };
-        E00000000000000000000005 = {isa = PBXFileReference; lastKnownFileType = image.icns; path = DockIcons/DockIconMissing.icns; sourceTree = "<group>"; };
-        E00000000000000000000007 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockIconControllerTests.swift; sourceTree = "<group>"; };
+        E00000000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarIcon.swift; sourceTree = "<group>"; };
+        E00000000000000000000003 = {isa = PBXFileReference; lastKnownFileType = image.png; path = MenuBarSymbols.png; sourceTree = "<group>"; };
+        E00000000000000000000007 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarIconTests.swift; sourceTree = "<group>"; };
         D00000000000000000000001 /* TalkToPromptIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.icon; path = TalkToPromptIcon.icon; sourceTree = "<group>"; };
         C00000000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginModel.swift; sourceTree = "<group>"; };
         C00000000000000000000004 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginModelTests.swift; sourceTree = "<group>"; };
@@ -88,7 +86,7 @@
 		};
 		A00000000000000000000031 /* TalkToPrompt */ = {
 			isa = PBXGroup;
-			children = (F00000000000000000000001, E00000000000000000000001, E00000000000000000000003, E00000000000000000000005, D00000000000000000000001 /* TalkToPromptIcon.icon */, C00000000000000000000002, C00000000000000000000001, A00000000000000000000011 /* TalkToPromptApp.swift */, A00000000000000000000012 /* ContentView.swift */, A00000000000000000000013 /* BeepPlayer.swift */, A00000000000000000000016 /* ShiftMonitor.swift */, A00000000000000000000017 /* ClipboardTextInserter.swift */, A0000000000000000000001A /* DesktopOverlayController.swift */, A0000000000000000000001B /* MicrophoneRecorder.swift */, A0000000000000000000001C /* MicrophoneRecordingSession.swift */, A0000000000000000000001E /* RecordedAudioEncoding.swift */, A0000000000000000000001F /* VoiceSessionController.swift */, A0000000000000000000001D /* TalkToPrompt.entitlements */, A00000000000000000000018 /* APIKeyStore.swift */, A00000000000000000000019 /* APIKeyEntrySheet.swift */);
+			children = (F00000000000000000000001, E00000000000000000000001, E00000000000000000000003, D00000000000000000000001 /* TalkToPromptIcon.icon */, C00000000000000000000002, C00000000000000000000001, A00000000000000000000011 /* TalkToPromptApp.swift */, A00000000000000000000012 /* ContentView.swift */, A00000000000000000000013 /* BeepPlayer.swift */, A00000000000000000000016 /* ShiftMonitor.swift */, A00000000000000000000017 /* ClipboardTextInserter.swift */, A0000000000000000000001A /* DesktopOverlayController.swift */, A0000000000000000000001B /* MicrophoneRecorder.swift */, A0000000000000000000001C /* MicrophoneRecordingSession.swift */, A0000000000000000000001E /* RecordedAudioEncoding.swift */, A0000000000000000000001F /* VoiceSessionController.swift */, A0000000000000000000001D /* TalkToPrompt.entitlements */, A00000000000000000000018 /* APIKeyStore.swift */, A00000000000000000000019 /* APIKeyEntrySheet.swift */);
 			path = TalkToPrompt;
 			sourceTree = "<group>";
 		};
@@ -144,7 +142,7 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		A00000000000000000000022 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (E00000000000000000000004, E00000000000000000000006, D00000000000000000000002 /* TalkToPromptIcon.icon in Resources */); runOnlyForDeploymentPostprocessing = 0; };
+		A00000000000000000000022 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (E00000000000000000000004, D00000000000000000000002 /* TalkToPromptIcon.icon in Resources */); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -207,6 +205,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_KEY_LSUIElement = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
@@ -230,6 +229,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_KEY_LSUIElement = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";

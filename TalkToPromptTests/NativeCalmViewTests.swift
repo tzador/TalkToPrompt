@@ -53,9 +53,9 @@ final class NativeCalmViewTests: XCTestCase {
                 let (window, host) = host(state, scheme: scheme)
                 defer { window.close() }
                 let size = host.fittingSize
-                XCTAssertEqual(size.width, 720, accuracy: 0.5)
-                XCTAssertLessThan(size.height, 800)
-                XCTAssertGreaterThan(size.height, 600)
+                XCTAssertEqual(size.width, 420, accuracy: 0.5)
+                XCTAssertLessThan(size.height, 600)
+                XCTAssertGreaterThan(size.height, 380)
                 XCTAssertEqual(host.bounds.height, size.height, accuracy: 0.5)
                 sizes.append(size)
             }

@@ -51,6 +51,8 @@ struct NativeCalmView: View {
         var apiKey: () -> Void
         var setLogin: (Bool) -> Void
         var loginSettings: () -> Void
+        var clearAPIKey: () -> Void = {}
+        var quit: @MainActor () -> Void = { NSApp.terminate(nil) }
     }
 
     let state: NativeCalmState
@@ -58,68 +60,97 @@ struct NativeCalmView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.colorSchemeContrast) private var schemeContrast
 
-    private let rowHeight: CGFloat = 56
-    private let windowPadding: CGFloat = 24
+    private let iconWidth: CGFloat = 24
+    private let rowSpacing: CGFloat = 10
     private var isDark: Bool { colorScheme == .dark }
-    private var surface: Color {
-        isDark ? Color(.sRGB, red: 41 / 255, green: 41 / 255, blue: 44 / 255)
-            : Color(nsColor: .controlBackgroundColor)
-    }
-    private var outline: Color { Color.primary.opacity(schemeContrast == .increased ? 0.35 : (isDark ? 0.16 : 0.12)) }
+    private var outline: Color { Color.primary.opacity(schemeContrast == .increased ? 0.35 : 0.12) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 14) {
             header
-            section("Permissions") {
-                group {
-                    permissionRow("Input Monitoring", icon: "keyboard", requirement: state.inputMonitoring, action: actions.inputMonitoring)
-                    rowDivider
-                    permissionRow("Accessibility", icon: "accessibility", requirement: state.accessibility, action: actions.accessibility)
-                    rowDivider
-                    permissionRow("Microphone", icon: "mic", requirement: state.microphone, action: actions.microphone)
-                }
+            shortcutGuide
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Permissions")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.bottom, 2)
+                permissionRow("Input Monitoring", icon: "keyboard", requirement: state.inputMonitoring, action: actions.inputMonitoring)
+                permissionRow("Accessibility", icon: "accessibility", requirement: state.accessibility, action: actions.accessibility)
+                permissionRow("Microphone", icon: "mic", requirement: state.microphone, action: actions.microphone)
             }
-            section("OpenAI") {
-                group {
-                    settingsRow("API Key", icon: "key") {
-                        status(state.apiKeyUnavailable ? "Unable to read key" : state.apiKeyStatus,
-                               tone: state.hasAPIKey && !state.apiKeyUnavailable ? .success : .error,
-                               symbol: state.hasAPIKey && !state.apiKeyUnavailable ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                    } controls: {
-                        neutralButton(state.hasAPIKey ? "Clear" : "Enter", action: actions.apiKey)
-                            .accessibilityLabel(state.hasAPIKey ? "Clear API Key" : "Enter API Key")
+            Divider()
+            VStack(spacing: 6) {
+                HStack(spacing: rowSpacing) {
+                    rowIcon("key")
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("OpenAI API key").font(.callout.weight(.medium))
+                        Text(state.apiKeyUnavailable ? "Unable to read key" : state.apiKeyStatus)
+                            .font(.caption)
+                            .foregroundStyle(state.apiKeyUnavailable || !state.hasAPIKey ? errorInk : .secondary)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 6)
+                    Button(state.hasAPIKey ? "Change" : "Enter", action: actions.apiKey)
+                        .accessibilityLabel(state.hasAPIKey ? "Change API Key" : "Enter API Key")
+                    if state.hasAPIKey {
+                        Button(action: actions.clearAPIKey) {
+                            Image(systemName: "xmark.circle")
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel("Clear API Key")
+                        .help("Clear the saved API key")
                     }
                 }
-            }
-            section("Preferences") {
-                group {
-                    settingsRow("Launch at Login", icon: "power") {
-                        status(state.loginStatus,
-                               tone: state.loginUnavailable ? .error : (state.loginNeedsApproval ? .warning : (state.loginRequested ? .success : .neutral)),
-                               symbol: state.loginNeedsApproval ? "exclamationmark.circle.fill" : nil)
-                    } controls: {
-                        HStack(spacing: 12) {
-                            if state.loginNeedsApproval {
-                                neutralButton("Open System Settings", action: actions.loginSettings)
-                                    .accessibilityLabel("Open System Settings → Login Items")
-                            }
-                            Toggle("Launch at Login", isOn: Binding(
-                                get: { state.loginRequested }, set: { actions.setLogin($0) }
-                            ))
-                            .toggleStyle(.switch)
-                            .labelsHidden()
-                            .tint(NativeCalmPalette.green)
-                            .accessibilityLabel("Launch at Login")
-                            .help("Open TalkToPrompt automatically when you sign in to your Mac")
+                .frame(height: 44)
+                .accessibilityIdentifier("setting-API Key")
+                HStack(spacing: rowSpacing) {
+                    rowIcon("power")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Launch at Login").font(.callout.weight(.medium))
+                        if state.loginNeedsApproval || state.loginUnavailable {
+                            Text(state.loginStatus).font(.caption).foregroundStyle(.secondary)
                         }
                     }
+                    Spacer(minLength: 6)
+                    if state.loginNeedsApproval {
+                        settingsButton("Login Items", action: actions.loginSettings)
+                    }
+                    Toggle("Launch at Login", isOn: Binding(
+                        get: { state.loginRequested }, set: { actions.setLogin($0) }
+                    ))
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                    .tint(NativeCalmPalette.green)
+                    .accessibilityLabel("Launch at Login")
                 }
+                .frame(height: 40)
+                .accessibilityIdentifier("setting-Launch at Login")
             }
-            usageGuide
+            // The same icon slot and spacing align this baseline with every setting label.
+            HStack(spacing: rowSpacing) {
+                rowIcon("lock")
+                Text("Audio goes directly to OpenAI.")
+                    .font(.callout)
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(.secondary)
+            .frame(height: 28)
+            Divider()
+            HStack {
+                Spacer()
+                Button(action: actions.quit) {
+                    Label("Quit TalkToPrompt", systemImage: "power")
+                }
+                .foregroundStyle(errorInk)
+                .keyboardShortcut("q", modifiers: .command)
+                .accessibilityIdentifier("quit-TalkToPrompt")
+            }
         }
-        .padding(.horizontal, windowPadding)
-        .padding(.vertical, windowPadding)
-        .frame(width: 720)
+        .buttonStyle(.bordered)
+        .controlSize(.regular)
+        .padding(16)
+        .frame(width: 420)
         .fixedSize(horizontal: false, vertical: true)
         .background(Color(nsColor: .windowBackgroundColor))
         .foregroundStyle(.primary)
@@ -128,169 +159,94 @@ struct NativeCalmView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 14) {
-            if let url = Bundle.main.url(forResource: "TalkToPromptIcon", withExtension: "icns"),
-               let image = NSImage(contentsOf: url) {
+        HStack(spacing: rowSpacing) {
+            if let image = MenuBarIcon.image(color: .labelColor) {
                 Image(nsImage: image)
                     .resizable()
-                    .interpolation(.high)
-                    .frame(width: 64, height: 64)
+                    .renderingMode(.template)
+                    .scaledToFit()
+                    .frame(width: iconWidth, height: 24)
                     .accessibilityHidden(true)
             }
-            VStack(alignment: .leading, spacing: 4) {
-                Text("TalkToPrompt").font(.system(size: 25, weight: .bold))
-                Text("Speak naturally. Write anywhere.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 12)
-            let tone: Tone = state.isReady ? .success : (state.isChecking || state.needsRestart ? .warning : .error)
-            Label(state.isReady ? "Ready to use" : (state.isChecking ? "Checking setup…" : (state.needsRestart ? "Restart required" : "Setup required")),
-                  systemImage: state.isReady ? "checkmark.circle.fill" : (state.isChecking ? "circle.dotted" : "exclamationmark.circle.fill"))
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(ink(tone))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(accent(tone).opacity(isDark ? 0.17 : 0.12), in: Capsule())
-                .fixedSize()
+            Text("TalkToPrompt").font(.system(size: 20, weight: .semibold))
+            Spacer(minLength: 8)
+            Circle().fill(state.isReady ? NativeCalmPalette.green : NativeCalmPalette.red)
+                .frame(width: 7, height: 7)
+                .accessibilityHidden(true)
+            Text(state.isReady ? "Ready" : (state.isChecking ? "Checking…" : "Setup required"))
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
         }
+        .frame(height: 30)
     }
 
-    private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+    private var shortcutGuide: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.headline).padding(.leading, 8)
-            content()
-        }
-    }
-
-    private func group<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        VStack(spacing: 0, content: content)
-            .background(surface, in: RoundedRectangle(cornerRadius: 12))
-            .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(outline, lineWidth: 1) }
-    }
-
-    private var rowDivider: some View {
-        Rectangle().fill(outline).frame(height: 1).padding(.horizontal, 16)
-    }
-
-    private func settingsRow<Status: View, Controls: View>(
-        _ title: String, icon: String,
-        @ViewBuilder status: () -> Status, @ViewBuilder controls: () -> Controls
-    ) -> some View {
-        HStack(spacing: 12) {
-            HStack(spacing: 12) {
-                Image(systemName: icon)
-                    .font(.system(size: 19))
-                    .frame(width: 24)
-                    .accessibilityHidden(true)
-                Text(title).font(.callout.weight(.semibold)).lineLimit(1)
+            HStack(spacing: 6) {
+                ForEach(["Left Shift", "Right Shift"], id: \.self) { name in
+                    Image(systemName: "shift")
+                        .font(.system(size: 15, weight: .medium))
+                        .frame(width: 30, height: 25)
+                        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 5))
+                        .overlay { RoundedRectangle(cornerRadius: 5).strokeBorder(outline, lineWidth: 1) }
+                        .accessibilityLabel(name)
+                }
+                Text("Hold both Shift keys")
+                    .font(.callout.weight(.semibold))
+                    .padding(.leading, 4)
             }
-            .frame(width: 166, alignment: .leading)
-            status().frame(maxWidth: .infinity, alignment: .leading)
-            controls().frame(minWidth: 146, alignment: .trailing)
+            Text("Speak, then release to insert text.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 16)
-        .frame(height: rowHeight)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("setting-\(title)")
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color.primary.opacity(isDark ? 0.06 : 0.035), in: RoundedRectangle(cornerRadius: 9))
+    }
+
+    private func rowIcon(_ name: String) -> some View {
+        Image(systemName: name)
+            .font(.system(size: 17, weight: .regular))
+            .frame(width: iconWidth, height: 24, alignment: .center)
+            .accessibilityHidden(true)
     }
 
     private func permissionRow(_ title: String, icon: String, requirement: NativeCalmState.Requirement, action: @escaping () -> Void) -> some View {
-        settingsRow(title, icon: icon) {
-            status(requirement.title,
-                   tone: requirement == .granted ? .success : (requirement == .missing ? .error : .warning),
-                   symbol: requirement == .granted ? "checkmark.circle.fill" : (requirement == .checking ? "circle.dotted" : "exclamationmark.circle.fill"))
-        } controls: {
-            neutralButton("Open System Settings", action: action)
-                .accessibilityLabel("Open System Settings → \(title)")
-        }
-    }
-
-    private func neutralButton(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(title, action: action)
-            .buttonStyle(.bordered)
-            .controlSize(.regular)
-            .font(.callout)
-    }
-
-    private enum Tone { case success, warning, error, neutral }
-
-    private func accent(_ tone: Tone) -> Color {
-        switch tone {
-        case .success: return NativeCalmPalette.green
-        case .warning: return NativeCalmPalette.yellow
-        case .error: return NativeCalmPalette.red
-        case .neutral: return .secondary
-        }
-    }
-
-    /// Keep the sampled accents on indicators, with darker same-hue text in light mode.
-    private func ink(_ tone: Tone) -> Color {
-        if isDark { return accent(tone) }
-        switch tone {
-        case .success: return Color(.sRGB, red: 0.10, green: 0.40, blue: 0.18)
-        case .warning: return Color(.sRGB, red: 0.45, green: 0.34, blue: 0)
-        case .error: return Color(.sRGB, red: 0.70, green: 0.15, blue: 0.18)
-        case .neutral: return .secondary
-        }
-    }
-
-    private func status(_ title: String, tone: Tone, symbol: String?) -> some View {
-        HStack(spacing: 7) {
-            if let symbol {
-                Image(systemName: symbol).foregroundStyle(accent(tone)).accessibilityHidden(true)
+        HStack(spacing: rowSpacing) {
+            rowIcon(icon)
+            Text(title).font(.callout.weight(.medium))
+            Spacer(minLength: 6)
+            HStack(spacing: 4) {
+                Image(systemName: requirement == .granted ? "checkmark" : "exclamationmark.circle")
+                    .foregroundStyle(requirement == .granted ? NativeCalmPalette.green : (requirement == .missing ? NativeCalmPalette.red : NativeCalmPalette.yellow))
+                    .accessibilityHidden(true)
+                Text(requirement == .granted ? "Granted" : (requirement == .missing ? "Not granted" : (requirement == .checking ? "Checking…" : "Restart")))
+                    .foregroundStyle(requirement == .granted ? successInk : (requirement == .missing ? errorInk : .secondary))
             }
-            Text(title).foregroundStyle(ink(tone)).lineLimit(1)
+            .font(.caption)
+            .accessibilityLabel(requirement.title)
+            settingsButton(title, action: action)
         }
-        .font(.callout)
-        .help(title)
-        .accessibilityLabel(title)
+        .frame(height: 36)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("setting-" + title)
     }
 
-    private var usageGuide: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Hold both Shift keys to speak").font(.system(size: 18, weight: .semibold))
-            HStack(spacing: 14) {
-                keycap("Left Shift")
-                Text("+").font(.title3).foregroundStyle(.secondary)
-                keycap("Right Shift")
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 2)
-            VStack(alignment: .leading, spacing: 8) {
-                step("1", text: Text("Click a text field in any app."))
-                step("2", text: Text("Hold both Shift keys").bold() + Text(" and speak."))
-                step("3", text: Text("Release either Shift").bold() + Text(" to transcribe and paste."))
-            }
-            Rectangle().fill(outline).frame(height: 1)
-            Label("Audio is sent to OpenAI using your API key.", systemImage: "lock")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+    private func settingsButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: "gearshape")
+                .font(.system(size: 13))
+                .frame(width: 16, height: 16)
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(surface.opacity(0.55), in: RoundedRectangle(cornerRadius: 12))
-        .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(outline, lineWidth: 1) }
+        .help("Open System Settings → " + title)
+        .accessibilityLabel("Open System Settings → " + title)
     }
 
-    private func keycap(_ title: String) -> some View {
-        Label(title, systemImage: "shift")
-            .font(.callout.weight(.medium))
-            .frame(width: 132, height: 36)
-            .background(Color(nsColor: .controlColor), in: RoundedRectangle(cornerRadius: 7))
-            .overlay { RoundedRectangle(cornerRadius: 7).strokeBorder(outline, lineWidth: 1) }
-            .shadow(color: .black.opacity(isDark ? 0.18 : 0.08), radius: 1, y: 2)
-            .accessibilityElement(children: .combine)
+    private var successInk: Color {
+        isDark ? NativeCalmPalette.green : Color(.sRGB, red: 0.10, green: 0.40, blue: 0.18)
     }
 
-    private func step(_ number: String, text: Text) -> some View {
-        HStack(spacing: 10) {
-            Text(number)
-                .font(.caption.weight(.semibold).monospacedDigit())
-                .frame(width: 20, height: 20)
-                .background(Color.primary.opacity(0.08), in: Circle())
-                .accessibilityHidden(true)
-            text.font(.callout)
-        }
+    private var errorInk: Color {
+        isDark ? NativeCalmPalette.red : Color(.sRGB, red: 0.70, green: 0.15, blue: 0.18)
     }
 }
