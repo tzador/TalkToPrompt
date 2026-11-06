@@ -11,6 +11,7 @@ final class MicrophoneRecordingSession: ObservableObject {
 
     var onPermissionPrompt: (() -> Void)?
     var onFirstAudio: (() -> Void)?
+    var onIntensities: (([Float]) -> Void)?
     var onFailure: (() -> Void)?
 
     private let capture: MicrophoneCapturing
@@ -76,6 +77,11 @@ final class MicrophoneRecordingSession: ObservableObject {
                         self.finish()
                         self.errorMessage = message
                         self.onFailure?()
+                    }
+                }, onIntensities: { [weak self] values in
+                    Task { @MainActor [weak self] in
+                        guard let self, self.activeID == id else { return }
+                        self.onIntensities?(values)
                     }
                 })
             } catch is CancellationError {

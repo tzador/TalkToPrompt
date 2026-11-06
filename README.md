@@ -15,6 +15,8 @@ open /Applications/TalkToPrompt.app
 
 Follow the setup wizard to grant Accessibility, Input Monitoring, and Microphone permissions, then enter your [OpenAI API key](https://platform.openai.com/api-keys). Restart when prompted. OpenAI API usage is billed separately.
 
+For local development, `make run` builds and launches `/Applications/TalkToPrompt.app` so System Settings always refers to the same copy. The Makefile uses an available Apple Development signing identity to keep permission grants stable across rebuilds. You can select another certificate with `SIGNING_IDENTITY="certificate name"`. Without a certificate, builds use ad hoc signing; after a rebuild you may need to remove the old TalkToPrompt entry from Accessibility and Input Monitoring and add `/Applications/TalkToPrompt.app` again.
+
 ## Use
 
 1. Click a text field in any app.

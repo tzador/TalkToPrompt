@@ -5,6 +5,7 @@ import Foundation
 protocol VoiceSessionOverlay: AnyObject {
     func show()
     func setMessage(_ message: String?)
+    func appendIntensities(_ values: [Float])
     func hide(completion: (() -> Void)?)
     func hideImmediately()
 }
@@ -61,6 +62,10 @@ final class VoiceSessionController {
         self.onError = onError
         microphone.onPermissionPrompt = { [weak self] in self?.overlay.hideImmediately() }
         microphone.onFirstAudio = { [weak self] in self?.audioStarted() }
+        microphone.onIntensities = { [weak self] values in
+            guard let self, self.phase == .listening else { return }
+            self.overlay.appendIntensities(values)
+        }
         microphone.onFailure = { [weak self] in self?.close() }
     }
 

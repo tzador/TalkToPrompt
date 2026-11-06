@@ -6,12 +6,15 @@ private actor SessionCapture: MicrophoneCapturing {
     private(set) var starts: [UUID] = []
     private(set) var stops: [UUID] = []
     private var callbacks: [UUID: @Sendable () -> Void] = [:]
+    private var intensityBatches: [UUID: @Sendable ([Float]) -> Void] = [:]
     private var waitForStop = false
     private var stopReply: CheckedContinuation<MicrophoneRecording?, Never>?
 
-    func start(id: UUID, onFirstAudio: @escaping @Sendable () -> Void, onFailure: @escaping @Sendable (String) -> Void) {
+    func start(id: UUID, onFirstAudio: @escaping @Sendable () -> Void, onFailure: @escaping @Sendable (String) -> Void,
+               onIntensities: @escaping @Sendable ([Float]) -> Void) {
         starts.append(id)
         callbacks[id] = onFirstAudio
+        intensityBatches[id] = onIntensities
     }
     func stop(id: UUID) async -> MicrophoneRecording? {
         stops.append(id)
@@ -19,6 +22,7 @@ private actor SessionCapture: MicrophoneCapturing {
         return Self.recording
     }
     func firstAudio() { if let id = starts.last { callbacks[id]?() } }
+    func intensities(_ values: [Float]) { if let id = starts.last { intensityBatches[id]?(values) } }
     func delayStop() { waitForStop = true }
     func completeStop() { stopReply?.resume(returning: Self.recording); stopReply = nil }
     private static var recording: MicrophoneRecording {
@@ -31,10 +35,12 @@ private actor SessionCapture: MicrophoneCapturing {
 private final class SessionOverlay: VoiceSessionOverlay {
     var visible = false
     var message: String?
+    var intensityBatches: [[Float]] = []
     var hides = 0
     var completions: [() -> Void] = []
     func show() { visible = true }
     func setMessage(_ message: String?) { self.message = message }
+    func appendIntensities(_ values: [Float]) { intensityBatches.append(values) }
     func hide(completion: (() -> Void)?) {
         hides += 1
         if !visible { completion?() }
@@ -106,6 +112,31 @@ private final class VoiceFixture {
 }
 
 final class VoiceSessionControllerTests: XCTestCase {
+    @MainActor
+    func testIntensitiesReachesOverlayOnlyWhileListeningAndIgnoresLateCallbacks() async {
+        let f = VoiceFixture()
+        defer { f.voice.stopImmediately() }
+        await listen(f)
+        let values: [Float] = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
+        await f.capture.intensities(values)
+        await waitUntil { f.overlay.intensityBatches.count == 1 }
+        XCTAssertEqual(f.overlay.intensityBatches.last, values)
+        f.voice.finish()
+        await f.capture.intensities(Array(repeating: 1, count: 8))
+        await waitUntil { await f.transcriber.requests == 1 }
+        XCTAssertEqual(f.overlay.intensityBatches.count, 1)
+        await f.transcriber.complete()
+        await waitUntil { f.voice.phase == .closing }
+        f.overlay.completeFade()
+        XCTAssertTrue(f.voice.begin())
+        await waitUntil { await f.capture.starts.count == 2 }
+        // Before the second capture's first audio, intensityBatchesl updates are discarded.
+        await f.capture.intensities(values)
+        await f.capture.firstAudio()
+        await waitUntil { f.voice.phase == .listening }
+        XCTAssertEqual(f.overlay.intensityBatches.count, 1)
+    }
+
     @MainActor
     private func waitUntil(_ condition: () async -> Bool) async {
         for _ in 0..<200 {

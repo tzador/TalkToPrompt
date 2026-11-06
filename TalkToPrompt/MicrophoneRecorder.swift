@@ -69,7 +69,8 @@ protocol MicrophoneCapturing: Sendable {
     func start(
         id: UUID,
         onFirstAudio: @escaping @Sendable () -> Void,
-        onFailure: @escaping @Sendable (String) -> Void
+        onFailure: @escaping @Sendable (String) -> Void,
+        onIntensities: @escaping @Sendable ([Float]) -> Void
     ) async throws
     func stop(id: UUID) async -> MicrophoneRecording?
 }
@@ -91,7 +92,8 @@ actor MicrophoneRecorder: MicrophoneCapturing {
     func start(
         id: UUID,
         onFirstAudio: @escaping @Sendable () -> Void,
-        onFailure: @escaping @Sendable (String) -> Void
+        onFailure: @escaping @Sendable (String) -> Void,
+        onIntensities: @escaping @Sendable ([Float]) -> Void = { _ in }
     ) throws {
         if cancelledBeforeStart.remove(id) != nil { throw CancellationError() }
         if let active {
@@ -105,8 +107,11 @@ actor MicrophoneRecorder: MicrophoneCapturing {
             throw RecordingError.noInputDevice
         }
         let audio = InMemoryAudioCapture(format: format)
+        let intensity = AudioIntensityAnalyzer(sampleRate: format.sampleRate)
         input.installTap(onBus: 0, bufferSize: 256, format: format) { buffer, _ in
             if audio.append(buffer) { onFirstAudio() }
+            let values = intensity.consume(buffer)
+            if !values.isEmpty { onIntensities(values) }
         }
         do {
             engine.prepare()

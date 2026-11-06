@@ -5,28 +5,141 @@ import XCTest
 
 final class DesktopOverlayControllerTests: XCTestCase {
     @MainActor
-    func testStatusDotsAnimateWithoutResettingOrMovingText() async throws {
+    func testAudioHistoryMatchesAcrossScreensAndCollapsesDuringProcessing() throws {
+        var frames = [NSRect(x: 0, y: 0, width: 800, height: 800)]
+        let overlay = DesktopOverlayController(screenFrames: { frames })
+        defer { overlay.stop() }
+        overlay.start()
+        overlay.setMessage("Listening... 3 seconds")
+        let values = (0..<32).map { Float($0 % 5) / 4 }
+        overlay.appendIntensities(values)
+        frames.append(NSRect(x: -800, y: 0, width: 800, height: 800))
+        overlay.refreshScreens()
+        var radii: [[CGFloat]] = []
+        for panel in overlay.panels {
+            let view = try XCTUnwrap(panel.contentView as? DesktopOverlayController.OverlayContentView)
+            view.layoutSubtreeIfNeeded()
+            let visualization = view.visualization
+            XCTAssertFalse(visualization.isHidden)
+            XCTAssertEqual(visualization.rings.count, 32)
+            var innerRadius = visualization.centralRadius
+            for (index, ring) in visualization.rings.enumerated() {
+                let displacedRadius = visualization.centralRadius + CGFloat(index + 1) * visualization.radiusStep
+                    + CGFloat(values[31 - index]) * visualization.maximumDisplacement * 2
+                let expectedRadius = max(displacedRadius, innerRadius + visualization.radiusStep * 0.15)
+                let bounds = try XCTUnwrap(ring.path).boundingBox
+                XCTAssertEqual(bounds.width / 2, expectedRadius, accuracy: 0.001)
+                XCTAssertEqual(bounds.midX, view.bounds.midX, accuracy: 0.001)
+                XCTAssertEqual(bounds.midY, view.bounds.midY, accuracy: 0.001)
+                XCTAssertNil(ring.strokeColor)
+                XCTAssertEqual(ring.fillRule, .evenOdd)
+                let fade = max(0, 1 - CGFloat(index) / 30)
+                let opacity = index.isMultiple(of: 2) ? CGFloat(AudioHistoryVisualizationView.centralOpacity) * fade : 0
+                XCTAssertEqual(try XCTUnwrap(ring.fillColor).alpha, opacity, accuracy: 0.001)
+                let color = try XCTUnwrap(NSColor(cgColor: try XCTUnwrap(ring.fillColor))?.usingColorSpace(.deviceRGB))
+                XCTAssertEqual(color.redComponent, 1)
+                XCTAssertEqual(color.greenComponent, 1)
+                XCTAssertEqual(color.blueComponent, 1)
+                let path = try XCTUnwrap(ring.path)
+                XCTAssertFalse(path.contains(CGPoint(x: bounds.midX, y: bounds.midY), using: .evenOdd))
+                let bandMidpoint = CGPoint(x: bounds.midX + (innerRadius + expectedRadius) / 2, y: bounds.midY)
+                XCTAssertTrue(path.contains(bandMidpoint, using: .evenOdd))
+                innerRadius = expectedRadius
+            }
+            XCTAssertEqual(visualization.circle.opacity, 0.45, accuracy: 0.001)
+            XCTAssertEqual(visualization.centralRadius, 180, accuracy: 0.001)
+            XCTAssertGreaterThan(visualization.radiusStep, 5.5)
+            XCTAssertTrue(visualization.layer?.sublayers?.last === visualization.circle)
+            radii.append(visualization.rings.map { $0.path!.boundingBox.width / 2 })
+        }
+        XCTAssertEqual(radii[0], radii[1])
+        overlay.setMessage("Transcribing...")
+        overlay.appendIntensities(Array(repeating: 1, count: 32)) // A late audio update must not reopen rings.
+        for panel in overlay.panels {
+            let view = try XCTUnwrap(panel.contentView as? DesktopOverlayController.OverlayContentView)
+            for ring in view.visualization.rings {
+                XCTAssertEqual(try XCTUnwrap(ring.path).boundingBox.width / 2, view.visualization.centralRadius, accuracy: 0.001)
+                XCTAssertEqual(ring.opacity, 0)
+                let animation = try XCTUnwrap(ring.animation(forKey: "path") as? CABasicAnimation)
+                XCTAssertEqual(animation.duration, AudioHistoryVisualizationView.collapseDuration)
+                XCTAssertNotNil(ring.animation(forKey: "opacity"))
+            }
+            XCTAssertNotNil(view.visualization.circle.animation(forKey: "processingPulse"))
+            XCTAssertFalse(view.visualization.isHidden)
+        }
+        overlay.hideImmediately()
+        for panel in overlay.panels {
+            let view = try XCTUnwrap(panel.contentView as? DesktopOverlayController.OverlayContentView)
+            XCTAssertTrue(view.visualization.isHidden)
+            XCTAssertNil(view.visualization.circle.animation(forKey: "processingPulse"))
+        }
+    }
+
+    @MainActor
+    func testHistoryImpulseMovesOutwardAndOlderCirclesAlwaysStayLarger() throws {
+        let overlay = DesktopOverlayController(screenFrames: { [NSRect(x: 0, y: 0, width: 800, height: 800)] })
+        defer { overlay.stop() }
+        overlay.start()
+        overlay.setListening(true)
+        let view = try XCTUnwrap(overlay.panels.first?.contentView as? DesktopOverlayController.OverlayContentView)
+        view.layoutSubtreeIfNeeded()
+        let center = try XCTUnwrap(view.visualization.circle.path).boundingBox
+        overlay.appendIntensities([1])
+        for age in 0..<32 {
+            let expected = (0..<32).map { Float($0 == age ? 1 : 0) }
+            XCTAssertEqual(overlay.intensityHistory, expected)
+            var previousRadius = view.visualization.centralRadius
+            for (index, ring) in view.visualization.rings.enumerated() {
+                let radius = try XCTUnwrap(ring.path).boundingBox.width / 2
+                XCTAssertGreaterThan(radius, previousRadius)
+                let baseline = view.visualization.centralRadius + CGFloat(index + 1) * view.visualization.radiusStep
+                let displacedRadius = baseline + CGFloat(expected[index]) * view.visualization.maximumDisplacement * 2
+                XCTAssertEqual(radius, max(displacedRadius, previousRadius + view.visualization.radiusStep * 0.15), accuracy: 0.001)
+                previousRadius = radius
+            }
+            XCTAssertEqual(view.visualization.circle.path?.boundingBox, center)
+            overlay.appendIntensities([0])
+        }
+        XCTAssertEqual(overlay.intensityHistory, Array(repeating: 0, count: 32))
+        overlay.appendIntensities([0.1, 0.2, 0.3])
+        XCTAssertEqual(Array(overlay.intensityHistory.prefix(3)), [0.3, 0.2, 0.1])
+        overlay.setMessage("Transcribing...")
+        overlay.appendIntensities([1])
+        XCTAssertEqual(overlay.intensityHistory, Array(repeating: 0, count: 32))
+        overlay.setListening(true)
+        XCTAssertEqual(overlay.intensityHistory, Array(repeating: 0, count: 32))
+    }
+
+    @MainActor
+    func testStatusLetterCyclesWithoutDotsResettingOrMovingText() async throws {
         let overlay = DesktopOverlayController(screenFrames: { [NSRect(x: 0, y: 0, width: 800, height: 600)] })
         defer { overlay.stop() }
         overlay.start()
-        for (message, update) in [("Listening... 0 seconds", "Listening... 2 seconds"),
-                                  ("Transcribing...", "Transcribing..."), ("Translating...", "Translating...")] {
+        for (message, update, word) in [("Listening... 0 seconds", "Listening... 2 seconds", "Listening"),
+                                        ("Transcribing...", "Transcribing...", "Transcribing"),
+                                        ("Translating...", "Translating...", "Translating")] {
             overlay.setMessage(message)
             let view = try XCTUnwrap(overlay.panels.first?.contentView as? DesktopOverlayController.OverlayContentView)
             view.layoutSubtreeIfNeeded()
             let initialFrame = view.statusLabel.frame
-            let firstDot = (view.statusLabel.stringValue as NSString).range(of: "...").location
-            func firstDotColor() -> NSColor? {
-                view.statusLabel.attributedStringValue.attribute(.foregroundColor, at: firstDot, effectiveRange: nil) as? NSColor
+            XCTAssertEqual(view.statusLabel.stringValue, word)
+            func color(at index: Int) -> NSColor? {
+                view.statusLabel.attributedStringValue.attribute(.foregroundColor, at: index, effectiveRange: nil) as? NSColor
             }
-            XCTAssertEqual(firstDotColor(), .clear)
+            XCTAssertEqual(color(at: 0), .white)
             for _ in 0..<100 {
-                if firstDotColor() == .white { break }
-                try await Task.sleep(for: .milliseconds(10))
+                if color(at: 1) == .white { break }
+                try await Task.sleep(for: .milliseconds(5))
             }
-            XCTAssertEqual(firstDotColor(), .white)
+            XCTAssertEqual(color(at: 1), .white)
             overlay.setMessage(update)
-            XCTAssertEqual(firstDotColor(), .white)
+            XCTAssertEqual(color(at: 1), .white)
+            for step in 0...word.count {
+                view.setHighlightedLetter(step)
+                for index in 0..<word.count {
+                    XCTAssertEqual(color(at: index), index == step % word.count ? .white : .white.withAlphaComponent(0.55))
+                }
+            }
             view.layoutSubtreeIfNeeded()
             XCTAssertEqual(view.statusLabel.frame, initialFrame)
         }
@@ -49,7 +162,7 @@ final class DesktopOverlayControllerTests: XCTestCase {
             XCTAssertEqual(view.statusLabel.stringValue, "Speaking...")
             XCTAssertEqual(view.counterLabel.stringValue, "4 seconds")
             XCTAssertFalse(view.counterLabel.isHidden)
-            XCTAssertEqual(view.counterLabel.font?.pointSize, 28)
+            XCTAssertEqual(view.counterLabel.font?.pointSize, 20)
             XCTAssertEqual(view.counterLabel.textColor, NSColor.white.withAlphaComponent(0.7))
             let font = try XCTUnwrap(view.counterLabel.font)
             XCTAssertFalse(NSFontManager.shared.traits(of: font).contains(.boldFontMask))
@@ -84,8 +197,8 @@ final class DesktopOverlayControllerTests: XCTestCase {
         XCTAssertTrue(view.statusLabel.isHidden)
         overlay.setListening(true)
         view.layoutSubtreeIfNeeded()
-        XCTAssertEqual(view.statusLabel.stringValue, "Listening...")
-        XCTAssertEqual(view.statusLabel.font?.pointSize, 64)
+        XCTAssertEqual(view.statusLabel.stringValue, "Listening")
+        XCTAssertEqual(view.statusLabel.font?.pointSize, 36)
         XCTAssertEqual(view.statusLabel.textColor, .white)
         XCTAssertFalse(view.statusLabel.isHidden)
         XCTAssertEqual(view.statusLabel.frame.midX, view.bounds.midX, accuracy: 1)
@@ -206,12 +319,12 @@ final class DesktopOverlayControllerTests: XCTestCase {
         XCTAssertTrue(overlay.panels.allSatisfy(\.isVisible))
         for panel in overlay.panels {
             let view = panel.contentView as? DesktopOverlayController.OverlayContentView
-            XCTAssertEqual(view?.statusLabel.stringValue, "Listening...")
+            XCTAssertEqual(view?.statusLabel.stringValue, "Listening")
         }
     }
 
     @MainActor
-    func testShowFadesBlackToTwentyFivePercentWithoutBlurOver222Milliseconds() throws {
+    func testShowFadesBlackToFortyPercentWithoutBlurOver222Milliseconds() throws {
         let overlay = DesktopOverlayController(screenFrames: { [NSRect(x: 0, y: 0, width: 160, height: 120)] })
         defer { overlay.stop() }
         let keyWindow = NSApp.keyWindow
@@ -230,7 +343,7 @@ final class DesktopOverlayControllerTests: XCTestCase {
         XCTAssertEqual(animation.toValue as? Float, 1)
         let content = try XCTUnwrap(panel.contentView as? DesktopOverlayController.OverlayContentView)
         XCTAssertFalse(content.subviews.contains { $0 is NSVisualEffectView })
-        XCTAssertEqual(content.backgroundTint.layer?.opacity, 0.25)
+        XCTAssertEqual(content.backgroundTint.layer?.opacity, 0.40)
         let background = try XCTUnwrap(content.backgroundTint.layer?.backgroundColor)
         let color = try XCTUnwrap(NSColor(cgColor: background)?.usingColorSpace(.deviceRGB))
         XCTAssertEqual(color.redComponent, 0)

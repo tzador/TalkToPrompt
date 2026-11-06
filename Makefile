@@ -3,6 +3,11 @@
 CONFIGURATION ?= Debug
 BUILD_DIR := build
 APP_PATH = $(BUILD_DIR)/Build/Products/$(CONFIGURATION)/TalkToPrompt.app
+INSTALLED_APP_PATH = /Applications/TalkToPrompt.app
+# A certificate-backed identity keeps macOS permission grants valid across builds.
+# Override SIGNING_IDENTITY for another certificate, or '-' for ad hoc signing.
+SIGNING_IDENTITY ?= $(shell security find-identity -v -p codesigning 2>/dev/null | awk '/"Apple Development:/ {print $$2; exit}')
+SIGNING_FLAGS = CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="$(if $(SIGNING_IDENTITY),$(SIGNING_IDENTITY),-)"
 
 .PHONY: check build run install zip test clean
 
@@ -28,14 +33,16 @@ check:
 	@echo "Xcode command line tools are available."
 
 build: check
-	xcodebuild -project TalkToPrompt.xcodeproj -scheme TalkToPrompt -configuration "$(CONFIGURATION)" -derivedDataPath "$(BUILD_DIR)" build
+	xcodebuild -project TalkToPrompt.xcodeproj -scheme TalkToPrompt -configuration "$(CONFIGURATION)" -derivedDataPath "$(BUILD_DIR)" $(SIGNING_FLAGS) build
 
 run: build
-	open "$(APP_PATH)"
+	@pkill -x TalkToPrompt 2>/dev/null || true
+	ditto "$(APP_PATH)" "$(INSTALLED_APP_PATH)"
+	open "$(INSTALLED_APP_PATH)"
 
 install: CONFIGURATION = Release
 install: build
-	ditto "$(APP_PATH)" "/Applications/TalkToPrompt.app"
+	ditto "$(APP_PATH)" "$(INSTALLED_APP_PATH)"
 
 zip:
 	@mkdir -p "$(BUILD_DIR)"
@@ -44,7 +51,7 @@ zip:
 	@echo "Created $(BUILD_DIR)/TalkToPrompt.zip"
 
 test:
-	xcodebuild -project TalkToPrompt.xcodeproj -scheme TalkToPrompt -configuration "$(CONFIGURATION)" -destination 'platform=macOS' -derivedDataPath "$(BUILD_DIR)" test
+	xcodebuild -project TalkToPrompt.xcodeproj -scheme TalkToPrompt -configuration "$(CONFIGURATION)" -destination 'platform=macOS' -derivedDataPath "$(BUILD_DIR)" $(SIGNING_FLAGS) test
 
 clean:
 	xcodebuild -project TalkToPrompt.xcodeproj -scheme TalkToPrompt -configuration "$(CONFIGURATION)" -derivedDataPath "$(BUILD_DIR)" clean

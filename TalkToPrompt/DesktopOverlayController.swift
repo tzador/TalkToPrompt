@@ -10,9 +10,10 @@ final class DesktopOverlayController: VoiceSessionOverlay {
     private var screenObserver: NSObjectProtocol?
     private var spaceObserver: NSObjectProtocol?
     private var hideTask: Task<Void, Never>?
-    private var dotsTimer: Timer?
-    private var dotCount = 0
+    private var highlightTimer: Timer?
+    private var highlightIndex = 0
     private var animatedStatus: String?
+    private(set) var intensityHistory = [Float](repeating: 0, count: AudioHistoryVisualizationView.historyCount)
     private(set) var panels: [OverlayPanel] = []
     private(set) var isVisible = false
     private(set) var isListening = false
@@ -87,34 +88,47 @@ final class DesktopOverlayController: VoiceSessionOverlay {
     func setMessage(_ message: String?) {
         self.message = message
         isListening = message?.hasPrefix("Listening...") == true
+        if !isListening { intensityHistory = Array(repeating: 0, count: AudioHistoryVisualizationView.historyCount) }
         let status = message.map { message in
             guard let separator = message.range(of: "... ") else { return message }
             return String(message[..<separator.lowerBound]) + "..."
         }
-        let animatedStatus = ["Listening...", "Transcribing...", "Translating..."].contains(status ?? "") ? status : nil
+        let animatedStatus = ["Listening...", "Transcribing...", "Translating..."].contains(status ?? "")
+            ? status.map { String($0.dropLast(3)) } : nil
         if self.animatedStatus != animatedStatus {
-            dotsTimer?.invalidate()
-            dotsTimer = nil
-            dotCount = 0
+            highlightTimer?.invalidate()
+            highlightTimer = nil
+            highlightIndex = 0
             self.animatedStatus = animatedStatus
             if animatedStatus != nil {
-                let timer = Timer(timeInterval: 0.4, repeats: true) { [weak self] _ in
+                let timer = Timer(timeInterval: 0.12, repeats: true) { [weak self] _ in
                     MainActor.assumeIsolated {
                         guard let self else { return }
-                        self.dotCount = (self.dotCount + 1) % 4
+                        self.highlightIndex = (self.highlightIndex + 1) % (self.animatedStatus?.count ?? 1)
                         for panel in self.panels {
-                            (panel.contentView as? OverlayContentView)?.setDotCount(self.dotCount)
+                            (panel.contentView as? OverlayContentView)?.setHighlightedLetter(self.highlightIndex)
                         }
                     }
                 }
                 RunLoop.main.add(timer, forMode: .common)
-                dotsTimer = timer
+                highlightTimer = timer
             }
         }
         for panel in panels {
             guard let view = panel.contentView as? OverlayContentView else { continue }
             view.setMessage(message)
-            view.setDotCount(dotCount)
+            view.setHighlightedLetter(highlightIndex)
+        }
+    }
+
+    func appendIntensities(_ values: [Float]) {
+        guard isListening, !values.isEmpty else { return }
+        for value in values {
+            intensityHistory.insert(value.isFinite ? min(1, max(0, value)) : 0, at: 0)
+            intensityHistory.removeLast()
+        }
+        for panel in panels {
+            (panel.contentView as? OverlayContentView)?.visualization.updateHistory(intensityHistory)
         }
     }
 
@@ -143,7 +157,8 @@ final class DesktopOverlayController: VoiceSessionOverlay {
             let panel = OverlayPanel(frame: frame)
             let view = panel.contentView as? OverlayContentView
             view?.setMessage(message)
-            view?.setDotCount(dotCount)
+            view?.setHighlightedLetter(highlightIndex)
+            view?.visualization.updateHistory(intensityHistory, animated: false)
             return panel
         }
         if isVisible {
@@ -231,10 +246,11 @@ final class DesktopOverlayController: VoiceSessionOverlay {
 
     final class OverlayContentView: NSView {
         let backgroundTint = NSView()
+        let visualization = AudioHistoryVisualizationView(frame: .zero)
         let statusLabel = NSTextField(labelWithString: "")
         let counterLabel = NSTextField(labelWithString: "")
-        private var animatesDots = false
-        private var dotCount = 0
+        private var animatesLetters = false
+        private var highlightIndex = 0
 
         override init(frame: NSRect) {
             super.init(frame: frame)
@@ -245,10 +261,14 @@ final class DesktopOverlayController: VoiceSessionOverlay {
             backgroundTint.autoresizingMask = [.width, .height]
             backgroundTint.wantsLayer = true
             backgroundTint.layer?.backgroundColor = NSColor.black.cgColor
-            backgroundTint.layer?.opacity = 0.25
+            backgroundTint.layer?.opacity = 0.40
             addSubview(backgroundTint)
 
-            statusLabel.font = .systemFont(ofSize: 64, weight: .bold)
+            visualization.frame = bounds
+            visualization.autoresizingMask = [.width, .height]
+            addSubview(visualization)
+
+            statusLabel.font = .systemFont(ofSize: 36, weight: .bold)
             statusLabel.textColor = .white
             statusLabel.alignment = .center
             statusLabel.maximumNumberOfLines = 0
@@ -257,7 +277,7 @@ final class DesktopOverlayController: VoiceSessionOverlay {
             statusLabel.translatesAutoresizingMaskIntoConstraints = false
             statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             addSubview(statusLabel)
-            counterLabel.font = .monospacedDigitSystemFont(ofSize: 28, weight: .regular)
+            counterLabel.font = .monospacedDigitSystemFont(ofSize: 20, weight: .regular)
             counterLabel.textColor = NSColor.white.withAlphaComponent(0.7)
             counterLabel.alignment = .center
             counterLabel.isHidden = true
@@ -286,26 +306,30 @@ final class DesktopOverlayController: VoiceSessionOverlay {
             }
             statusLabel.isHidden = message == nil
             counterLabel.isHidden = counterLabel.stringValue.isEmpty
-            animatesDots = ["Listening...", "Transcribing...", "Translating..."].contains(statusLabel.stringValue)
-            setDotCount(dotCount)
+            animatesLetters = ["Listening...", "Transcribing...", "Translating..."].contains(statusLabel.stringValue)
+            if animatesLetters { statusLabel.stringValue = String(statusLabel.stringValue.dropLast(3)) }
+            visualization.setState(
+                listening: statusLabel.stringValue == "Listening",
+                processing: ["Transcribing", "Translating"].contains(statusLabel.stringValue),
+                visible: animatesLetters
+            )
+            setHighlightedLetter(highlightIndex)
         }
 
-        func setDotCount(_ count: Int) {
-            dotCount = count
-            guard animatesDots else { return }
-            // Keep all three glyphs in the layout and only change their ink.
-            // This preserves the word's position throughout the entire cycle.
+        func setHighlightedLetter(_ count: Int) {
+            highlightIndex = count
+            guard animatesLetters else { return }
+            // Change only the ink, keeping the word's layout stationary.
             let text = statusLabel.stringValue
             let paragraph = NSMutableParagraphStyle()
             paragraph.alignment = .center
             let attributed = NSMutableAttributedString(string: text, attributes: [
-                .font: statusLabel.font ?? NSFont.systemFont(ofSize: 64, weight: .bold),
-                .foregroundColor: NSColor.white,
+                .font: statusLabel.font ?? NSFont.systemFont(ofSize: 36, weight: .bold),
+                .foregroundColor: NSColor.white.withAlphaComponent(0.55),
                 .paragraphStyle: paragraph
             ])
-            attributed.addAttribute(.foregroundColor, value: NSColor.clear,
-                                    range: NSRange(location: (text as NSString).length - 3 + count,
-                                                   length: 3 - count))
+            attributed.addAttribute(.foregroundColor, value: NSColor.white,
+                                    range: NSRange(location: count % (text as NSString).length, length: 1))
             statusLabel.attributedStringValue = attributed
         }
 

@@ -11,7 +11,8 @@ private actor FakeMicrophoneCapture: MicrophoneCapturing {
 
     func start(
         id: UUID, onFirstAudio: @escaping @Sendable () -> Void,
-        onFailure: @escaping @Sendable (String) -> Void
+        onFailure: @escaping @Sendable (String) -> Void,
+        onIntensities: @escaping @Sendable ([Float]) -> Void
     ) throws {
         if failStart { throw NSError(domain: "MicrophoneTest", code: 1) }
         starts.append(id)
@@ -33,6 +34,67 @@ private actor FakeMicrophoneCapture: MicrophoneCapturing {
 }
 
 final class MicrophoneRecorderTests: XCTestCase {
+    private func tone(frequency: Double, amplitude: Float = 0.2, sampleRate: Double = 48_000,
+                      frames: UInt32 = 8192, channels: UInt32 = 1, interleaved: Bool = false) throws -> AVAudioPCMBuffer {
+        let format = try XCTUnwrap(AVAudioFormat(commonFormat: .pcmFormatFloat32,
+                                               sampleRate: sampleRate, channels: channels, interleaved: interleaved))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames))
+        buffer.frameLength = frames
+        for frame in 0..<Int(frames) {
+            let value = amplitude * Float(sin(2 * .pi * frequency * Double(frame) / sampleRate))
+            for channel in 0..<Int(channels) {
+                if interleaved { buffer.floatChannelData![0][frame * Int(channels) + channel] = value }
+                else { buffer.floatChannelData![channel][frame] = value }
+            }
+        }
+        return buffer
+    }
+
+    func testIntensityProducesOneValuePerTenMillisecondsAtDifferentSampleRates() throws {
+        for rate in [22_050.0, 44_100.0, 48_000.0] {
+            let analyzer = AudioIntensityAnalyzer(sampleRate: rate)
+            let levels = analyzer.consume(try tone(frequency: 1000, sampleRate: rate, frames: UInt32(rate)))
+            XCTAssertEqual(levels.count, 100)
+            XCTAssertTrue(levels.allSatisfy { $0.isFinite && (0...1).contains($0) })
+        }
+    }
+
+    func testIntensityKeepsPartialWindowsAcrossTapBuffers() throws {
+        let analyzer = AudioIntensityAnalyzer(sampleRate: 48_000)
+        let halfWindow = try tone(frequency: 1000, frames: 240)
+        XCTAssertTrue(analyzer.consume(halfWindow).isEmpty)
+        let first = analyzer.consume(halfWindow)
+        XCTAssertEqual(first.count, 1)
+        XCTAssertTrue(analyzer.consume(halfWindow).isEmpty)
+        let second = analyzer.consume(halfWindow)
+        let combined = AudioIntensityAnalyzer(sampleRate: 48_000).consume(try tone(frequency: 1000, frames: 960))
+        XCTAssertEqual(first + second, combined)
+    }
+
+    func testIntensityRetainsChronologicalWindowsAndRespondsToVolume() throws {
+        let buffer = try tone(frequency: 1000, frames: 1440)
+        for frame in 0..<480 { buffer.floatChannelData![0][frame] = 0 }
+        for frame in 960..<1440 { buffer.floatChannelData![0][frame] *= 0.05 }
+        let levels = AudioIntensityAnalyzer(sampleRate: 48_000).consume(buffer)
+        XCTAssertEqual(levels.count, 3)
+        XCTAssertEqual(levels[0], 0)
+        XCTAssertGreaterThan(levels[1], levels[2] + 0.3)
+        XCTAssertGreaterThan(levels[2], 0)
+    }
+
+    func testIntensitySumsChannelVolumesWithoutPhaseCancellation() throws {
+        let mono = AudioIntensityAnalyzer(sampleRate: 48_000).consume(try tone(frequency: 1000, frames: 480))
+        for interleaved in [false, true] {
+            let buffer = try tone(frequency: 1000, frames: 480, channels: 2, interleaved: interleaved)
+            for frame in 0..<480 {
+                if interleaved { buffer.floatChannelData![0][frame * 2 + 1] *= -1 }
+                else { buffer.floatChannelData![1][frame] *= -1 }
+            }
+            let levels = AudioIntensityAnalyzer(sampleRate: 48_000).consume(buffer)
+            XCTAssertEqual(levels, mono)
+        }
+    }
+
     func testCapturedPCMIsOwnedAndPreservesAllChannels() throws {
         let format = try XCTUnwrap(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48_000, channels: 2, interleaved: false))
         let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 64))
