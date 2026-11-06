@@ -36,6 +36,15 @@ final class ShiftMonitor: ObservableObject {
     @Published var showRestartConfirmation = false
     @Published var restartError: String?
     @Published private(set) var isRestarting = false
+    @Published var preferredTranscriptionLanguage: String {
+        didSet {
+            if let code = TranscriptionLanguage.validated(preferredTranscriptionLanguage) {
+                defaults.set(code, forKey: TranscriptionLanguage.preferenceKey)
+            } else {
+                defaults.removeObject(forKey: TranscriptionLanguage.preferenceKey)
+            }
+        }
+    }
     var allowsDictation = true {
         didSet {
             if oldValue && !allowsDictation { voiceSession.stopImmediately() }
@@ -57,7 +66,8 @@ final class ShiftMonitor: ObservableObject {
         onError: { [weak self] error in
             self?.transcriptionError = error
             NSApp.activate(ignoringOtherApps: true)
-        }
+        },
+        preferredLanguage: { [weak self] in self?.preferredTranscriptionLanguage }
     )
     private var chord = ShiftChordState()
     private var eventTap: CFMachPort?
@@ -114,6 +124,9 @@ final class ShiftMonitor: ObservableObject {
         microphone: MicrophoneRecordingSession? = nil
     ) {
         self.defaults = defaults
+        preferredTranscriptionLanguage = TranscriptionLanguage.validated(
+            defaults.string(forKey: TranscriptionLanguage.preferenceKey)
+        ) ?? ""
         self.checkPermission = checkPermission
         self.requestAccess = requestAccess
         self.checkEventPostingPermission = checkEventPostingPermission

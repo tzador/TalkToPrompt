@@ -23,6 +23,8 @@ Follow the setup wizard to grant Accessibility, Input Monitoring, and Microphone
 
 Click the menu bar icon to change your API key, enable **Launch at Login**, or quit. Its indicator is green when ready and red when setup needs attention.
 
+The menu’s **Language hint** defaults to **Auto-detect**. Select the language you expect to speak to help transcription recognize it; your choice is remembered. Auto-detect sends no language hint. This uses the transcription API’s [expected-input-language hints](https://developers.openai.com/api/docs/guides/speech-to-text#supported-languages) and keeps speech in its original language.
+
 ## Development
 
 Requires full Xcode 26+ with its command-line tools selected. Builds use the Debug configuration by default and store Xcode build data under `build/`.

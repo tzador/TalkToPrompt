@@ -6,6 +6,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+        920000000000000000000002 = {isa = PBXBuildFile; fileRef = 920000000000000000000001; };
         910000000000000000000012 = {isa = PBXBuildFile; fileRef = 910000000000000000000011; };
         910000000000000000000002 = {isa = PBXBuildFile; fileRef = 910000000000000000000001; };
         900000000000000000000032 = {isa = PBXBuildFile; fileRef = 900000000000000000000031; };
@@ -46,6 +47,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+        920000000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionLanguage.swift; sourceTree = "<group>"; };
         910000000000000000000011 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioHistoryVisualizationView.swift; sourceTree = "<group>"; };
         910000000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioIntensityAnalyzer.swift; sourceTree = "<group>"; };
         900000000000000000000031 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingTests.swift; sourceTree = "<group>"; };
@@ -96,7 +98,7 @@
 		};
 		A00000000000000000000031 /* TalkToPrompt */ = {
 			isa = PBXGroup;
-			children = (910000000000000000000011, 910000000000000000000001, 900000000000000000000021, 900000000000000000000011, F00000000000000000000001, E00000000000000000000001, E00000000000000000000003, D00000000000000000000001 /* TalkToPromptIcon.icon */, C00000000000000000000002, C00000000000000000000001, A00000000000000000000011 /* TalkToPromptApp.swift */, A00000000000000000000012 /* ContentView.swift */, A00000000000000000000013 /* BeepPlayer.swift */, A00000000000000000000016 /* ShiftMonitor.swift */, A00000000000000000000017 /* ClipboardTextInserter.swift */, A0000000000000000000001A /* DesktopOverlayController.swift */, A0000000000000000000001B /* MicrophoneRecorder.swift */, A0000000000000000000001C /* MicrophoneRecordingSession.swift */, A0000000000000000000001E /* RecordedAudioEncoding.swift */, A0000000000000000000001F /* VoiceSessionController.swift */, A0000000000000000000001D /* TalkToPrompt.entitlements */, A00000000000000000000018 /* APIKeyStore.swift */, A00000000000000000000019 /* APIKeyEntrySheet.swift */);
+			children = (920000000000000000000001, 910000000000000000000011, 910000000000000000000001, 900000000000000000000021, 900000000000000000000011, F00000000000000000000001, E00000000000000000000001, E00000000000000000000003, D00000000000000000000001 /* TalkToPromptIcon.icon */, C00000000000000000000002, C00000000000000000000001, A00000000000000000000011 /* TalkToPromptApp.swift */, A00000000000000000000012 /* ContentView.swift */, A00000000000000000000013 /* BeepPlayer.swift */, A00000000000000000000016 /* ShiftMonitor.swift */, A00000000000000000000017 /* ClipboardTextInserter.swift */, A0000000000000000000001A /* DesktopOverlayController.swift */, A0000000000000000000001B /* MicrophoneRecorder.swift */, A0000000000000000000001C /* MicrophoneRecordingSession.swift */, A0000000000000000000001E /* RecordedAudioEncoding.swift */, A0000000000000000000001F /* VoiceSessionController.swift */, A0000000000000000000001D /* TalkToPrompt.entitlements */, A00000000000000000000018 /* APIKeyStore.swift */, A00000000000000000000019 /* APIKeyEntrySheet.swift */);
 			path = TalkToPrompt;
 			sourceTree = "<group>";
 		};
@@ -156,7 +158,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		A00000000000000000000021 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (910000000000000000000012, 910000000000000000000002, 900000000000000000000022, 900000000000000000000012, F00000000000000000000002, E00000000000000000000002, C00000000000000000000003, A0000000000000000000000E, A00000000000000000000001 /* TalkToPromptApp.swift in Sources */, A00000000000000000000002 /* ContentView.swift in Sources */, A00000000000000000000003 /* BeepPlayer.swift in Sources */, A00000000000000000000005 /* ShiftMonitor.swift in Sources */, A00000000000000000000006 /* ClipboardTextInserter.swift in Sources */, A00000000000000000000007 /* APIKeyStore.swift in Sources */, A00000000000000000000008 /* APIKeyEntrySheet.swift in Sources */, A00000000000000000000009 /* DesktopOverlayController.swift in Sources */, A0000000000000000000000A /* MicrophoneRecorder.swift in Sources */, A0000000000000000000000B /* MicrophoneRecordingSession.swift in Sources */, A0000000000000000000000C /* RecordedAudioEncoding.swift in Sources */, A0000000000000000000000D /* VoiceSessionController.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
+		A00000000000000000000021 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (920000000000000000000002, 910000000000000000000012, 910000000000000000000002, 900000000000000000000022, 900000000000000000000012, F00000000000000000000002, E00000000000000000000002, C00000000000000000000003, A0000000000000000000000E, A00000000000000000000001 /* TalkToPromptApp.swift in Sources */, A00000000000000000000002 /* ContentView.swift in Sources */, A00000000000000000000003 /* BeepPlayer.swift in Sources */, A00000000000000000000005 /* ShiftMonitor.swift in Sources */, A00000000000000000000006 /* ClipboardTextInserter.swift in Sources */, A00000000000000000000007 /* APIKeyStore.swift in Sources */, A00000000000000000000008 /* APIKeyEntrySheet.swift in Sources */, A00000000000000000000009 /* DesktopOverlayController.swift in Sources */, A0000000000000000000000A /* MicrophoneRecorder.swift in Sources */, A0000000000000000000000B /* MicrophoneRecordingSession.swift in Sources */, A0000000000000000000000C /* RecordedAudioEncoding.swift in Sources */, A0000000000000000000000D /* VoiceSessionController.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
 		B00000000000000000000021 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (900000000000000000000032, F00000000000000000000004, E00000000000000000000008, C00000000000000000000005, B00000000000000000000001, B00000000000000000000002, B00000000000000000000003, B00000000000000000000004, B00000000000000000000005, B00000000000000000000006, B00000000000000000000007); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 

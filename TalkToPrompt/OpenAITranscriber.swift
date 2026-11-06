@@ -1,7 +1,7 @@
 import Foundation
 
 protocol AudioTranscribing: Sendable {
-    func transcribe(_ recording: MicrophoneRecording, apiKey: String) async throws -> String
+    func transcribe(_ recording: MicrophoneRecording, apiKey: String, language: String?) async throws -> String
 }
 
 /// Uploads an in-memory WAV; neither audio nor credentials are persisted by the client.
@@ -19,8 +19,8 @@ struct OpenAITranscriber: AudioTranscribing {
         self.transport = transport ?? { try await session.data(for: $0) }
     }
 
-    func transcribe(_ recording: MicrophoneRecording, apiKey: String) async throws -> String {
-        try await requestTranscript(recording, apiKey: apiKey)
+    func transcribe(_ recording: MicrophoneRecording, apiKey: String, language: String? = nil) async throws -> String {
+        try await requestTranscript(recording, apiKey: apiKey, language: language)
     }
 
     /// Checks the actual transcription endpoint, including model access and quota.
@@ -33,7 +33,7 @@ struct OpenAITranscriber: AudioTranscribing {
         _ = try await requestTranscript(silence, apiKey: key)
     }
 
-    private func requestTranscript(_ recording: MicrophoneRecording, apiKey: String) async throws -> String {
+    private func requestTranscript(_ recording: MicrophoneRecording, apiKey: String, language: String? = nil) async throws -> String {
         // Reject oversized PCM before allocating another copy for encoding/upload.
         guard recording.chunks.reduce(UInt64(44), { total, chunk in
             total + chunk.planes.reduce(UInt64(0)) { $0 + UInt64($1.count) }
@@ -47,6 +47,9 @@ struct OpenAITranscriber: AudioTranscribing {
         var body = Data()
         func append(_ string: String) { body.append(contentsOf: string.utf8) }
         append("--\(boundary)\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\ngpt-transcribe\r\n")
+        if let language = TranscriptionLanguage.validated(language) {
+            append("--\(boundary)\r\nContent-Disposition: form-data; name=\"languages[]\"\r\n\r\n\(language)\r\n")
+        }
         append("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"recording.wav\"\r\nContent-Type: audio/wav\r\n\r\n")
         body.append(wave)
         append("\r\n--\(boundary)--\r\n")

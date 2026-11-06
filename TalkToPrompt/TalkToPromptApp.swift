@@ -21,12 +21,23 @@ final class MenuBarAppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelega
     private var setupWindow: NSWindow?
     private var waitingForSettings = false
     private(set) var statusItem: NSStatusItem?
-    private let popover = NSPopover()
+    private let popover: NSPopover
+    private var outsideClickMonitor: Any?
     private var observations: Set<AnyCancellable> = []
     private var presentedNotice: String?
     private var showingModal = false
     private var iconState: MenuBarIcon.State?
     private let readinessIndicator = MenuBarIcon.ReadinessIndicator()
+
+    override init() {
+        popover = NSPopover()
+        super.init()
+    }
+
+    init(popover: NSPopover) {
+        self.popover = popover
+        super.init()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Tests host the app but should not install a menu item or request permissions.
@@ -54,8 +65,7 @@ final class MenuBarAppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelega
         popover.contentViewController = NSHostingController(rootView: ContentView(
             monitor: monitor, apiKey: apiKey, onboarding: onboarding, launchAtLogin: launchAtLogin,
             modalChanged: { [weak self] showing in
-                self?.showingModal = showing
-                self?.popover.behavior = showing ? .applicationDefined : .transient
+                self?.setShowingModal(showing)
             },
             openSetup: { [weak self] in
                 guard let self else { return }
@@ -93,6 +103,10 @@ final class MenuBarAppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelega
         }
     }
 
+    func applicationDidResignActive(_ notification: Notification) {
+        dismissPopoverForOutsideInteraction()
+    }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         waitingForSettings = false
         if !onboarding.hasCompleted {
@@ -105,12 +119,45 @@ final class MenuBarAppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelega
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     func applicationWillTerminate(_ notification: Notification) {
+        removeOutsideClickMonitor()
         monitor.stop()
         observations.removeAll()
         if let statusItem { NSStatusBar.system.removeStatusItem(statusItem) }
     }
 
     func popoverShouldClose(_ popover: NSPopover) -> Bool { !showingModal }
+
+    func popoverDidShow(_ notification: Notification) {
+        removeOutsideClickMonitor()
+        // Native Picker menus can interrupt transient popover dismissal. Mouse
+        // clicks delivered to other apps provide an independent dismissal path.
+        outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.dismissPopoverForOutsideInteraction() }
+        }
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        removeOutsideClickMonitor()
+    }
+
+    func setShowingModal(_ showing: Bool) {
+        let wasShowingModal = showingModal
+        showingModal = showing
+        popover.behavior = showing ? .applicationDefined : .transient
+        if wasShowingModal, !showing, !NSApp.isActive { dismissPopoverForOutsideInteraction() }
+    }
+
+    func dismissPopoverForOutsideInteraction() {
+        guard popover.isShown, !showingModal else { return }
+        popover.performClose(nil)
+    }
+
+    private func removeOutsideClickMonitor() {
+        if let outsideClickMonitor { NSEvent.removeMonitor(outsideClickMonitor) }
+        outsideClickMonitor = nil
+    }
 
     @objc private func togglePopover() {
         waitingForSettings = false

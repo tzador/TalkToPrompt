@@ -1,8 +1,69 @@
+import AppKit
 import AVFoundation
 import XCTest
 @testable import TalkToPrompt
 
+@MainActor
+private final class TrayPopoverSpy: NSPopover {
+    var simulatedVisibility = true
+    var closeRequests = 0
+    override var isShown: Bool { simulatedVisibility }
+    override func performClose(_ sender: Any?) {
+        closeRequests += 1
+        simulatedVisibility = false
+    }
+}
+
 final class TalkToPromptTests: XCTestCase {
+    @MainActor
+    func testTrayClosesOnAppDeactivationAfterChangingLanguage() {
+        let popover = TrayPopoverSpy()
+        let delegate = MenuBarAppDelegate(popover: popover)
+        let previousLanguage = delegate.monitor.preferredTranscriptionLanguage
+        defer { delegate.monitor.preferredTranscriptionLanguage = previousLanguage }
+        delegate.monitor.preferredTranscriptionLanguage = "uk"
+        delegate.applicationDidResignActive(Notification(name: NSApplication.didResignActiveNotification))
+        XCTAssertEqual(popover.closeRequests, 1)
+        XCTAssertFalse(popover.isShown)
+        delegate.dismissPopoverForOutsideInteraction()
+        XCTAssertEqual(popover.closeRequests, 1)
+    }
+
+    @MainActor
+    func testOutsideClickClosesTrayButKeepsModalDialogsOpen() {
+        let popover = TrayPopoverSpy()
+        let delegate = MenuBarAppDelegate(popover: popover)
+        delegate.setShowingModal(false)
+        XCTAssertEqual(popover.closeRequests, 0, "Initial modal state must not dismiss a newly opening popover")
+        delegate.setShowingModal(true)
+        XCTAssertEqual(popover.behavior, .applicationDefined)
+        XCTAssertFalse(delegate.popoverShouldClose(popover))
+        delegate.dismissPopoverForOutsideInteraction()
+        delegate.applicationDidResignActive(Notification(name: NSApplication.didResignActiveNotification))
+        XCTAssertEqual(popover.closeRequests, 0)
+        delegate.setShowingModal(false)
+        XCTAssertEqual(popover.behavior, .transient)
+        XCTAssertTrue(delegate.popoverShouldClose(popover))
+        delegate.dismissPopoverForOutsideInteraction()
+        XCTAssertEqual(popover.closeRequests, 1)
+    }
+
+    @MainActor
+    func testTranscriptionLanguagePreferencePersistsAndAutoClearsIt() throws {
+        let suite = UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let monitor = ShiftMonitor(defaults: defaults)
+        XCTAssertEqual(monitor.preferredTranscriptionLanguage, "")
+        monitor.preferredTranscriptionLanguage = "uk"
+        XCTAssertEqual(ShiftMonitor(defaults: defaults).preferredTranscriptionLanguage, "uk")
+        monitor.preferredTranscriptionLanguage = ""
+        XCTAssertNil(defaults.string(forKey: TranscriptionLanguage.preferenceKey))
+        XCTAssertEqual(ShiftMonitor(defaults: defaults).preferredTranscriptionLanguage, "")
+        defaults.set("invalid-code", forKey: TranscriptionLanguage.preferenceKey)
+        XCTAssertEqual(ShiftMonitor(defaults: defaults).preferredTranscriptionLanguage, "")
+    }
+
     @MainActor
     func testAccessibilitySettingsReturnOffersOneRestartEvenWithCachedDenial() throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString))

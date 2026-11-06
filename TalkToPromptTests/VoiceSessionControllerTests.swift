@@ -55,10 +55,12 @@ private final class SessionOverlay: VoiceSessionOverlay {
 
 private actor SessionTranscriber: AudioTranscribing {
     var requests = 0
+    var languages: [String?] = []
     var fail = false
     var pending: CheckedContinuation<String, Error>?
-    func transcribe(_ recording: MicrophoneRecording, apiKey: String) async throws -> String {
+    func transcribe(_ recording: MicrophoneRecording, apiKey: String, language: String?) async throws -> String {
         requests += 1
+        languages.append(language)
         if fail { throw OpenAITranscriber.TranscriptionError.rejected(401, false) }
         return try await withCheckedThrowingContinuation { pending = $0 }
     }
@@ -72,6 +74,7 @@ private final class VoiceFixture {
     let overlay = SessionOverlay()
     let transcriber = SessionTranscriber()
     var key: String? = "sk-test-only"
+    var preferredLanguage: String?
     var pasted: [String] = []
     var restores = 0
     var pasteFails = false
@@ -91,11 +94,30 @@ private final class VoiceFixture {
         now: { [unowned self] in clock },
         onBegin: { [unowned self] in begins += 1 },
         onExit: { [unowned self] in exits += 1 },
-        onError: { [unowned self] in errors.append($0) }
+        onError: { [unowned self] in errors.append($0) },
+        preferredLanguage: { [unowned self] in preferredLanguage }
     )
 }
 
 final class VoiceSessionControllerTests: XCTestCase {
+    @MainActor
+    func testInputLanguageIsCapturedAtBeginningOfEachRecording() async {
+        for initial in [nil, "uk"] as [String?] {
+            let f = VoiceFixture()
+            defer { f.voice.stopImmediately() }
+            f.preferredLanguage = initial
+            await listen(f)
+            f.preferredLanguage = "de"
+            f.voice.finish()
+            await waitUntil { await f.transcriber.requests == 1 }
+            let languages = await f.transcriber.languages
+            XCTAssertEqual(languages, [initial])
+            await f.transcriber.complete(text: "Добрий день")
+            await waitUntil { f.voice.phase == .closing }
+            XCTAssertEqual(f.pasted, ["Добрий день"])
+        }
+    }
+
     @MainActor
     func testIntensitiesReachesOverlayOnlyWhileListeningAndIgnoresLateCallbacks() async {
         let f = VoiceFixture()
@@ -287,6 +309,24 @@ final class VoiceSessionControllerTests: XCTestCase {
 }
 
 final class OpenAITranscriberTests: XCTestCase {
+    func testLanguageHintUsesArrayFieldAndAutoOmitsIt() async throws {
+        for code in [nil, "uk", "yue", "zh-tw", "invalid\r\nfield"] as [String?] {
+            let client = OpenAITranscriber { request in
+                let body = String(decoding: try XCTUnwrap(request.httpBody), as: UTF8.self)
+                if let hint = TranscriptionLanguage.validated(code) {
+                    XCTAssertTrue(body.contains("name=\"languages[]\"\r\n\r\n\(hint)\r\n"))
+                } else {
+                    XCTAssertFalse(body.contains("name=\"languages[]\""))
+                }
+                XCTAssertFalse(body.contains("name=\"language\""))
+                return (Data("{\"text\":\"Добрий день\"}".utf8),
+                        HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+            }
+            let text = try await client.transcribe(recording, apiKey: "sk-test-only", language: code)
+            XCTAssertEqual(text, "Добрий день")
+        }
+    }
+
     private var recording: MicrophoneRecording {
         .init(sampleRate: 48_000, channelCount: 1, commonFormat: .pcmFormatFloat32,
               isInterleaved: false, chunks: [.init(frameCount: 480, planes: [Data(count: 1920)])])

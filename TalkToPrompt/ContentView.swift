@@ -17,10 +17,12 @@ struct ContentView: View {
             apiKeyStatus: apiKey.status, hasAPIKey: apiKey.isProvided,
             apiKeyUnavailable: apiKey.errorMessage != nil, needsSetup: !onboarding.hasCompleted,
             loginRequested: launchAtLogin.isRequested, loginNeedsApproval: launchAtLogin.needsApproval,
-            loginStatus: launchAtLogin.statusText, loginError: launchAtLogin.errorMessage
+            loginStatus: launchAtLogin.statusText, loginError: launchAtLogin.errorMessage,
+            transcriptionLanguage: monitor.preferredTranscriptionLanguage
         ), actions: .init(
             apiKey: { showAPIKeyEntry = true }, clearAPIKey: { apiKey.clear() }, setup: openSetup,
             setLogin: { launchAtLogin.setEnabled($0) },
+            setTranscriptionLanguage: { monitor.preferredTranscriptionLanguage = $0 },
             loginSettings: {
                 willOpenLoginSettings()
                 launchAtLogin.openLoginItemsSettings()

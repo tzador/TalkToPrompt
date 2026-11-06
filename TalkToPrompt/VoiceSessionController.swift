@@ -18,6 +18,8 @@ final class VoiceSessionController {
     private let microphone: MicrophoneRecordingSession
     private let overlay: VoiceSessionOverlay
     private let transcriber: AudioTranscribing
+    private let preferredLanguage: () -> String?
+    private var sessionLanguage: String?
     private let loadAPIKey: () throws -> String?
     private let insertText: (String) async throws -> Void
     private let restoreClipboard: () -> Void
@@ -41,11 +43,13 @@ final class VoiceSessionController {
         now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
         onBegin: @escaping () -> Void = {},
         onExit: @escaping () -> Void = {},
-        onError: @escaping (String) -> Void = { _ in }
+        onError: @escaping (String) -> Void = { _ in },
+        preferredLanguage: @escaping () -> String? = { nil }
     ) {
         self.microphone = microphone
         self.overlay = overlay
         self.transcriber = transcriber
+        self.preferredLanguage = preferredLanguage
         self.loadAPIKey = loadAPIKey
         self.insertText = insertText
         self.restoreClipboard = restoreClipboard
@@ -66,6 +70,7 @@ final class VoiceSessionController {
     func begin() -> Bool {
         guard phase == .idle else { return false }
         generation = UUID()
+        sessionLanguage = TranscriptionLanguage.validated(preferredLanguage())
         phase = .preparing
         overlay.setMessage(nil)
         overlay.show()
@@ -92,13 +97,14 @@ final class VoiceSessionController {
         stopTimer()
         overlay.setMessage("Transcribing...")
         let id = generation
+        let language = sessionLanguage
         let stopped = microphone.finish()
         transcriptionTask = Task { @MainActor [weak self] in
             let recording = await stopped?.value
             guard let self, self.generation == id, !Task.isCancelled else { return }
             guard let recording, recording.frameCount > 0, let key = self.apiKey else { self.close(); return }
             do {
-                let text = try await self.transcriber.transcribe(recording, apiKey: key)
+                let text = try await self.transcriber.transcribe(recording, apiKey: key, language: language)
                 guard self.generation == id, !Task.isCancelled else { return }
                 guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     self.close()
