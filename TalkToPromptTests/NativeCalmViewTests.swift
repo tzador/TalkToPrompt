@@ -37,11 +37,9 @@ final class NativeCalmViewTests: XCTestCase {
         approval.loginRequested = true
         approval.loginNeedsApproval = true
         approval.loginStatus = "Needs approval"
-        var translated = ready
-        translated.languageName = "Norwegian Bokmål"
         var sizes: [NSSize] = []
         for scheme in [ColorScheme.light, .dark] {
-            for state in [ready, missing, unavailable, approval, translated] {
+            for state in [ready, missing, unavailable, approval] {
                 let (window, host) = host(state, scheme: scheme)
                 defer { window.close() }
                 let size = host.fittingSize

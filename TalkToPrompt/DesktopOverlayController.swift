@@ -93,7 +93,7 @@ final class DesktopOverlayController: VoiceSessionOverlay {
             guard let separator = message.range(of: "... ") else { return message }
             return String(message[..<separator.lowerBound]) + "..."
         }
-        let animatedStatus = ["Listening...", "Transcribing...", "Translating..."].contains(status ?? "")
+        let animatedStatus = ["Listening...", "Transcribing..."].contains(status ?? "")
             ? status.map { String($0.dropLast(3)) } : nil
         if self.animatedStatus != animatedStatus {
             highlightTimer?.invalidate()
@@ -168,6 +168,9 @@ final class DesktopOverlayController: VoiceSessionOverlay {
 
     private func fade(_ panel: OverlayPanel, to opacity: Float) {
         guard let layer = panel.contentView?.layer else { return }
+        (panel.contentView as? OverlayContentView)?.visualization.animateVisibility(
+            visible: opacity > 0, duration: Self.fadeDuration
+        )
         let previousAnimation = layer.animation(forKey: Self.fadeAnimationKey) as? CABasicAnimation
         let currentOpacity = layer.presentation()?.opacity
             ?? (previousAnimation?.fromValue as? NSNumber)?.floatValue
@@ -198,6 +201,7 @@ final class DesktopOverlayController: VoiceSessionOverlay {
     private func hideImmediately(_ panel: OverlayPanel) {
         panel.transitionID = UUID()
         panel.orderOut(nil)
+        (panel.contentView as? OverlayContentView)?.visualization.resetVisibility()
         guard let layer = panel.contentView?.layer else { return }
         layer.removeAllAnimations()
         CATransaction.begin()
@@ -247,6 +251,7 @@ final class DesktopOverlayController: VoiceSessionOverlay {
     final class OverlayContentView: NSView {
         let backgroundTint = NSView()
         let visualization = AudioHistoryVisualizationView(frame: .zero)
+        let captionSurface = NSView()
         let statusLabel = NSTextField(labelWithString: "")
         let counterLabel = NSTextField(labelWithString: "")
         private var animatesLetters = false
@@ -268,6 +273,11 @@ final class DesktopOverlayController: VoiceSessionOverlay {
             visualization.autoresizingMask = [.width, .height]
             addSubview(visualization)
 
+            captionSurface.frame = bounds
+            captionSurface.autoresizingMask = [.width, .height]
+            captionSurface.wantsLayer = true
+            addSubview(captionSurface)
+
             statusLabel.font = .systemFont(ofSize: 36, weight: .bold)
             statusLabel.textColor = .white
             statusLabel.alignment = .center
@@ -276,14 +286,14 @@ final class DesktopOverlayController: VoiceSessionOverlay {
             statusLabel.isHidden = true
             statusLabel.translatesAutoresizingMaskIntoConstraints = false
             statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-            addSubview(statusLabel)
+            captionSurface.addSubview(statusLabel)
             counterLabel.font = .monospacedDigitSystemFont(ofSize: 20, weight: .regular)
             counterLabel.textColor = NSColor.white.withAlphaComponent(0.7)
             counterLabel.alignment = .center
             counterLabel.isHidden = true
             counterLabel.translatesAutoresizingMaskIntoConstraints = false
             counterLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-            addSubview(counterLabel)
+            captionSurface.addSubview(counterLabel)
             NSLayoutConstraint.activate([
                 statusLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
                 statusLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -297,6 +307,7 @@ final class DesktopOverlayController: VoiceSessionOverlay {
         }
 
         func setMessage(_ message: String?) {
+            let previousWord = statusLabel.stringValue
             if let message, let separator = message.range(of: "... ") {
                 statusLabel.stringValue = String(message[..<separator.lowerBound]) + "..."
                 counterLabel.stringValue = String(message[separator.upperBound...])
@@ -306,11 +317,19 @@ final class DesktopOverlayController: VoiceSessionOverlay {
             }
             statusLabel.isHidden = message == nil
             counterLabel.isHidden = counterLabel.stringValue.isEmpty
-            animatesLetters = ["Listening...", "Transcribing...", "Translating..."].contains(statusLabel.stringValue)
+            animatesLetters = ["Listening...", "Transcribing..."].contains(statusLabel.stringValue)
             if animatesLetters { statusLabel.stringValue = String(statusLabel.stringValue.dropLast(3)) }
+            statusLabel.font = .systemFont(ofSize: statusLabel.stringValue == "Listening" ? 54 : 36, weight: .bold)
+            if !previousWord.isEmpty, message != nil, previousWord != statusLabel.stringValue {
+                let transition = CATransition()
+                transition.type = .fade
+                transition.duration = DesktopOverlayController.fadeDuration
+                transition.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                captionSurface.layer?.add(transition, forKey: "transition")
+            }
             visualization.setState(
                 listening: statusLabel.stringValue == "Listening",
-                processing: ["Transcribing", "Translating"].contains(statusLabel.stringValue),
+                processing: statusLabel.stringValue == "Transcribing",
                 visible: animatesLetters
             )
             setHighlightedLetter(highlightIndex)

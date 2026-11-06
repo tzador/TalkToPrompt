@@ -18,7 +18,6 @@ struct NativeCalmState: Equatable {
     var loginNeedsApproval = false
     var loginStatus = "Disabled"
     var loginError: String?
-    var languageName = "Auto"
 }
 
 @MainActor
@@ -98,19 +97,6 @@ struct NativeCalmView: View {
                 Text(error).font(.caption).foregroundStyle(errorInk)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            HStack(spacing: 10) {
-                rowIcon("globe")
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Language").font(.callout.weight(.medium))
-                    Text("Say “translate to Spanish” to switch.")
-                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                }
-                Spacer(minLength: 4)
-                Text(state.languageName).font(.callout).lineLimit(1)
-                    .help(state.languageName == "Auto" ? "Paste speech in its original language" : "Translate each transcript into \(state.languageName)")
-            }
-            .frame(height: 44)
-            .help("Say “translate to” followed by an English language name. Turn translation off with “don't translate”, “no translation”, “translation off”, or “translation none”.")
             HStack(spacing: 10) {
                 rowIcon("lock")
                 Text("Audio goes directly to OpenAI.").font(.callout)

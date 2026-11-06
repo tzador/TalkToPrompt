@@ -53,7 +53,6 @@ final class MenuBarAppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelega
         popover.delegate = self
         popover.contentViewController = NSHostingController(rootView: ContentView(
             monitor: monitor, apiKey: apiKey, onboarding: onboarding, launchAtLogin: launchAtLogin,
-            language: monitor.language,
             modalChanged: { [weak self] showing in
                 self?.showingModal = showing
                 self?.popover.behavior = showing ? .applicationDefined : .transient

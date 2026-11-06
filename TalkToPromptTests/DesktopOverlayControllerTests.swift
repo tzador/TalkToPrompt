@@ -5,6 +5,41 @@ import XCTest
 
 final class DesktopOverlayControllerTests: XCTestCase {
     @MainActor
+    func testGeometryGrowsAndShrinksWithOverlayFadeAndStatusCrossfades() throws {
+        let overlay = DesktopOverlayController(screenFrames: { [NSRect(x: 0, y: 0, width: 800, height: 800)] })
+        defer { overlay.stop() }
+        overlay.setListening(true)
+        overlay.show()
+        let view = try XCTUnwrap(overlay.panels.first?.contentView as? DesktopOverlayController.OverlayContentView)
+        view.layoutSubtreeIfNeeded()
+        let geometry = view.visualization.geometryLayer
+        let entrance = try XCTUnwrap(geometry.animation(forKey: "radiusScale") as? CABasicAnimation)
+        XCTAssertEqual(entrance.duration, DesktopOverlayController.fadeDuration)
+        XCTAssertEqual((entrance.fromValue as? NSNumber)?.doubleValue, 0)
+        XCTAssertEqual((entrance.toValue as? NSNumber)?.doubleValue, 1)
+        XCTAssertEqual(view.statusLabel.font?.pointSize, 54)
+        overlay.appendIntensities(Array(repeating: 0.8, count: 32))
+        // Live 10 ms updates must not replace the slower entrance animation.
+        XCTAssertEqual(geometry.animation(forKey: "radiusScale")?.duration, DesktopOverlayController.fadeDuration)
+        overlay.setMessage("Transcribing...")
+        let crossfade = try XCTUnwrap(view.captionSurface.layer?.animation(forKey: "transition") as? CATransition)
+        XCTAssertEqual(crossfade.type, .fade)
+        XCTAssertEqual(crossfade.duration, DesktopOverlayController.fadeDuration)
+        XCTAssertEqual(view.statusLabel.font?.pointSize, 36)
+        XCTAssertNotNil(view.visualization.circle.animation(forKey: "processingPulse"))
+        overlay.hide()
+        let exit = try XCTUnwrap(geometry.animation(forKey: "radiusScale") as? CABasicAnimation)
+        XCTAssertEqual(exit.duration, DesktopOverlayController.fadeDuration)
+        XCTAssertEqual((exit.toValue as? NSNumber)?.doubleValue, 0)
+        overlay.show()
+        let reopened = try XCTUnwrap(geometry.animation(forKey: "radiusScale") as? CABasicAnimation)
+        XCTAssertEqual((reopened.toValue as? NSNumber)?.doubleValue, 1)
+        overlay.hideImmediately()
+        XCTAssertNil(geometry.animation(forKey: "radiusScale"))
+        XCTAssertEqual((geometry.value(forKeyPath: "transform.scale") as? NSNumber)?.doubleValue, 0)
+    }
+
+    @MainActor
     func testAudioHistoryMatchesAcrossScreensAndCollapsesDuringProcessing() throws {
         var frames = [NSRect(x: 0, y: 0, width: 800, height: 800)]
         let overlay = DesktopOverlayController(screenFrames: { frames })
@@ -49,7 +84,7 @@ final class DesktopOverlayControllerTests: XCTestCase {
             XCTAssertEqual(visualization.circle.opacity, 0.45, accuracy: 0.001)
             XCTAssertEqual(visualization.centralRadius, 180, accuracy: 0.001)
             XCTAssertGreaterThan(visualization.radiusStep, 5.5)
-            XCTAssertTrue(visualization.layer?.sublayers?.last === visualization.circle)
+            XCTAssertTrue(visualization.geometryLayer.sublayers?.last === visualization.circle)
             radii.append(visualization.rings.map { $0.path!.boundingBox.width / 2 })
         }
         XCTAssertEqual(radii[0], radii[1])
@@ -116,8 +151,7 @@ final class DesktopOverlayControllerTests: XCTestCase {
         defer { overlay.stop() }
         overlay.start()
         for (message, update, word) in [("Listening... 0 seconds", "Listening... 2 seconds", "Listening"),
-                                        ("Transcribing...", "Transcribing...", "Transcribing"),
-                                        ("Translating...", "Translating...", "Translating")] {
+                                        ("Transcribing...", "Transcribing...", "Transcribing")] {
             overlay.setMessage(message)
             let view = try XCTUnwrap(overlay.panels.first?.contentView as? DesktopOverlayController.OverlayContentView)
             view.layoutSubtreeIfNeeded()
@@ -198,7 +232,7 @@ final class DesktopOverlayControllerTests: XCTestCase {
         overlay.setListening(true)
         view.layoutSubtreeIfNeeded()
         XCTAssertEqual(view.statusLabel.stringValue, "Listening")
-        XCTAssertEqual(view.statusLabel.font?.pointSize, 36)
+        XCTAssertEqual(view.statusLabel.font?.pointSize, 54)
         XCTAssertEqual(view.statusLabel.textColor, .white)
         XCTAssertFalse(view.statusLabel.isHidden)
         XCTAssertEqual(view.statusLabel.frame.midX, view.bounds.midX, accuracy: 1)

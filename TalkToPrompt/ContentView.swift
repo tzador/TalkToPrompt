@@ -5,7 +5,6 @@ struct ContentView: View {
     @ObservedObject var apiKey: APIKeyModel
     @ObservedObject var onboarding: OnboardingModel
     @ObservedObject var launchAtLogin: LaunchAtLoginModel
-    @ObservedObject var language: DictationLanguageModel
     @State private var showAPIKeyEntry = false
     var modalChanged: (Bool) -> Void = { _ in }
     var openSetup: () -> Void = {}
@@ -18,8 +17,7 @@ struct ContentView: View {
             apiKeyStatus: apiKey.status, hasAPIKey: apiKey.isProvided,
             apiKeyUnavailable: apiKey.errorMessage != nil, needsSetup: !onboarding.hasCompleted,
             loginRequested: launchAtLogin.isRequested, loginNeedsApproval: launchAtLogin.needsApproval,
-            loginStatus: launchAtLogin.statusText, loginError: launchAtLogin.errorMessage,
-            languageName: language.displayName
+            loginStatus: launchAtLogin.statusText, loginError: launchAtLogin.errorMessage
         ), actions: .init(
             apiKey: { showAPIKeyEntry = true }, clearAPIKey: { apiKey.clear() }, setup: openSetup,
             setLogin: { launchAtLogin.setEnabled($0) },

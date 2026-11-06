@@ -6,6 +6,7 @@ final class AudioHistoryVisualizationView: NSView {
     static let historyCount = 32
     static let centralOpacity: Float = 0.45
     static let intensityGain: CGFloat = 2
+    let geometryLayer = CALayer()
     let circle = CAShapeLayer()
     /// Inside to outside: newest 10 ms slice first, oldest last.
     let rings = (0..<AudioHistoryVisualizationView.historyCount).map { _ in CAShapeLayer() }
@@ -15,11 +16,13 @@ final class AudioHistoryVisualizationView: NSView {
     private(set) var centralRadius: CGFloat = 180
     private(set) var radiusStep: CGFloat = 17
     private(set) var maximumDisplacement: CGFloat = 7.65
-    static let collapseDuration: TimeInterval = 0.35
+    static var collapseDuration: TimeInterval { DesktopOverlayController.fadeDuration }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
+        layer?.addSublayer(geometryLayer)
+        geometryLayer.setValue(0, forKeyPath: "transform.scale")
         for (index, ring) in rings.enumerated().reversed() {
             // Fade the filled bands to zero at the last filled boundary;
             // the alternating gaps stay fully transparent throughout.
@@ -29,11 +32,11 @@ final class AudioHistoryVisualizationView: NSView {
             ring.fillRule = .evenOdd
             ring.strokeColor = nil
             ring.opacity = 0
-            layer?.addSublayer(ring)
+            geometryLayer.addSublayer(ring)
         }
         circle.fillColor = NSColor.white.cgColor
         circle.opacity = Self.centralOpacity
-        layer?.addSublayer(circle)
+        geometryLayer.addSublayer(circle)
         isHidden = true
     }
 
@@ -41,6 +44,8 @@ final class AudioHistoryVisualizationView: NSView {
         super.layout()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
+        geometryLayer.bounds = bounds
+        geometryLayer.position = CGPoint(x: bounds.midX, y: bounds.midY)
         let availableRadius = max(1, min(520, min(bounds.width, bounds.height) / 2 - 20))
         centralRadius = min(180, availableRadius * 0.54)
         radiusStep = (availableRadius - centralRadius) / CGFloat(Self.historyCount + 1)
@@ -58,6 +63,7 @@ final class AudioHistoryVisualizationView: NSView {
     }
 
     func setState(listening: Bool, processing: Bool, visible: Bool) {
+        let appearing = isHidden && visible
         isHidden = !visible
         if isListening != listening {
             isListening = listening
@@ -100,7 +106,40 @@ final class AudioHistoryVisualizationView: NSView {
             }
             circle.removeAllAnimations()
             CATransaction.commit()
+            resetVisibility()
+        } else if appearing {
+            layoutSubtreeIfNeeded()
+            animateVisibility(visible: true, duration: DesktopOverlayController.fadeDuration, fromZero: true)
         }
+    }
+
+    /// Scaling only the geometry leaves the caption stationary. Audio updates
+    /// can continue changing paths without interrupting the radius transition.
+    func animateVisibility(visible: Bool, duration: TimeInterval, fromZero: Bool = false) {
+        let previous = geometryLayer.animation(forKey: "radiusScale") as? CABasicAnimation
+        let current = fromZero ? 0 :
+            (geometryLayer.presentation()?.value(forKeyPath: "transform.scale") as? NSNumber)?.doubleValue
+            ?? (previous?.fromValue as? NSNumber)?.doubleValue
+            ?? (geometryLayer.value(forKeyPath: "transform.scale") as? NSNumber)?.doubleValue ?? 0
+        let target = visible ? 1.0 : 0.0
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        geometryLayer.setValue(target, forKeyPath: "transform.scale")
+        let animation = CABasicAnimation(keyPath: "transform.scale")
+        animation.fromValue = current
+        animation.toValue = target
+        animation.duration = duration
+        animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        geometryLayer.add(animation, forKey: "radiusScale")
+        CATransaction.commit()
+    }
+
+    func resetVisibility() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        geometryLayer.removeAnimation(forKey: "radiusScale")
+        geometryLayer.setValue(0, forKeyPath: "transform.scale")
+        CATransaction.commit()
     }
 
     func updateHistory(_ values: [Float], animated: Bool = true) {
