@@ -8,6 +8,7 @@ final class DesktopOverlayController: VoiceSessionOverlay {
     private static let fadeAnimationKey = "overlayFade"
     private let screenFrames: () -> [NSRect]
     private var screenObserver: NSObjectProtocol?
+    private var spaceObserver: NSObjectProtocol?
     private var hideTask: Task<Void, Never>?
     private var dotsTimer: Timer?
     private var dotCount = 0
@@ -33,12 +34,23 @@ final class DesktopOverlayController: VoiceSessionOverlay {
                 self.refreshScreens()
             }
         }
+        spaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.spaceObserver != nil, self.isVisible else { return }
+                self.refreshScreens()
+                self.orderPanelsFront()
+            }
+        }
     }
 
     func show() {
         hideTask?.cancel()
         hideTask = nil
         start()
+        refreshScreens()
         guard !isVisible else { return }
         isVisible = true
         for panel in panels { fade(panel, to: 1) }
@@ -110,8 +122,14 @@ final class DesktopOverlayController: VoiceSessionOverlay {
         hideImmediately()
         if let screenObserver { NotificationCenter.default.removeObserver(screenObserver) }
         screenObserver = nil
+        if let spaceObserver { NSWorkspace.shared.notificationCenter.removeObserver(spaceObserver) }
+        spaceObserver = nil
         for panel in panels { panel.close() }
         panels.removeAll()
+    }
+
+    private func orderPanelsFront() {
+        for panel in panels { panel.orderFrontRegardless() }
     }
 
     func refreshScreens() {
@@ -193,13 +211,22 @@ final class DesktopOverlayController: VoiceSessionOverlay {
             isExcludedFromWindowsMenu = true
             animationBehavior = .none
             level = .screenSaver
-            collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+            // All Spaces covers virtual desktops; all applications also allows these
+            // independent panels alongside other apps in full screen and Stage Manager.
+            collectionBehavior = [.canJoinAllSpaces, .canJoinAllApplications,
+                                  .fullScreenAuxiliary, .stationary, .ignoresCycle]
 
             contentView = OverlayContentView(frame: NSRect(origin: .zero, size: frame.size))
         }
 
         override var canBecomeKey: Bool { false }
         override var canBecomeMain: Bool { false }
+
+        override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+            // Cover the entire assigned display, including its menu bar and Dock,
+            // without AppKit relocating panels to the main screen's usable area.
+            frameRect
+        }
     }
 
     final class OverlayContentView: NSView {

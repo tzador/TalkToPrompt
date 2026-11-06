@@ -115,6 +115,7 @@ final class DesktopOverlayControllerTests: XCTestCase {
         let overlay = DesktopOverlayController(screenFrames: { [NSRect(x: 0, y: 0, width: 160, height: 120)] })
         overlay.start()
         NotificationCenter.default.post(name: NSApplication.didChangeScreenParametersNotification, object: nil)
+        NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.activeSpaceDidChangeNotification, object: nil)
         overlay.stop()
         await Task.yield()
         XCTAssertTrue(overlay.panels.isEmpty)
@@ -143,8 +144,69 @@ final class DesktopOverlayControllerTests: XCTestCase {
             XCTAssertEqual(panel.level, .screenSaver)
             XCTAssertTrue(panel.styleMask.contains(.nonactivatingPanel))
             XCTAssertTrue(panel.collectionBehavior.contains(.canJoinAllSpaces))
+            XCTAssertTrue(panel.collectionBehavior.contains(.canJoinAllApplications))
             XCTAssertTrue(panel.collectionBehavior.contains(.fullScreenAuxiliary))
             XCTAssertEqual(panel.contentView?.layer?.opacity, 0)
+        }
+    }
+
+    @MainActor
+    func testDisplayFramesAreNotConstrainedToTheMainScreen() {
+        let frames = [
+            NSRect(x: -1920, y: -400, width: 1920, height: 1080),
+            NSRect(x: 0, y: 1080, width: 2560, height: 1440)
+        ]
+        let overlay = DesktopOverlayController(screenFrames: { frames })
+        defer { overlay.stop() }
+        overlay.show()
+        XCTAssertEqual(overlay.panels.map(\.frame), frames)
+        for (panel, frame) in zip(overlay.panels, frames) {
+            XCTAssertEqual(panel.constrainFrameRect(frame, to: NSScreen.main), frame)
+            XCTAssertEqual(panel.contentView?.bounds.size, frame.size)
+        }
+    }
+
+    @MainActor
+    func testSpaceChangesRestoreEveryVisibleOverlayWithoutTakingFocus() async {
+        let frames = [NSRect(x: 0, y: 0, width: 160, height: 120),
+                      NSRect(x: -200, y: 0, width: 200, height: 150)]
+        let overlay = DesktopOverlayController(screenFrames: { frames })
+        defer { overlay.stop() }
+        overlay.setListening(true)
+        overlay.show()
+        let keyWindow = NSApp.keyWindow
+        // Simulate panels needing to be reordered after the active Space changes.
+        for panel in overlay.panels { panel.orderOut(nil) }
+        NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.activeSpaceDidChangeNotification, object: nil)
+        for _ in 0..<100 {
+            if overlay.panels.allSatisfy(\.isVisible) { break }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(overlay.panels.map(\.frame), frames)
+        XCTAssertTrue(overlay.panels.allSatisfy(\.isVisible))
+        XCTAssertTrue(overlay.isListening)
+        XCTAssertTrue(NSApp.keyWindow === keyWindow)
+
+        overlay.hideImmediately()
+        NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.activeSpaceDidChangeNotification, object: nil)
+        await Task.yield()
+        XCTAssertTrue(overlay.panels.allSatisfy { !$0.isVisible })
+    }
+
+    @MainActor
+    func testShowRefreshesAllDisplaysWithoutWaitingForScreenNotification() {
+        var frames = [NSRect(x: 0, y: 0, width: 160, height: 120)]
+        let overlay = DesktopOverlayController(screenFrames: { frames })
+        defer { overlay.stop() }
+        overlay.start()
+        overlay.setListening(true)
+        frames.append(NSRect(x: -200, y: 0, width: 200, height: 150))
+        overlay.show()
+        XCTAssertEqual(overlay.panels.map(\.frame), frames)
+        XCTAssertTrue(overlay.panels.allSatisfy(\.isVisible))
+        for panel in overlay.panels {
+            let view = panel.contentView as? DesktopOverlayController.OverlayContentView
+            XCTAssertEqual(view?.statusLabel.stringValue, "Listening...")
         }
     }
 
