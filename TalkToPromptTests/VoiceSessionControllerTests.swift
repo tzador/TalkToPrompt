@@ -57,12 +57,15 @@ private actor SessionTranscriber: AudioTranscribing {
     var requests = 0
     var languages: [String?] = []
     var fail = false
+    var wasCancelled = false
     var pending: CheckedContinuation<String, Error>?
     func transcribe(_ recording: MicrophoneRecording, apiKey: String, language: String?) async throws -> String {
         requests += 1
         languages.append(language)
         if fail { throw OpenAITranscriber.TranscriptionError.rejected(401, false) }
-        return try await withCheckedThrowingContinuation { pending = $0 }
+        let text = try await withCheckedThrowingContinuation { pending = $0 }
+        wasCancelled = Task.isCancelled
+        return text
     }
     func complete(text: String = "hello, world") { pending?.resume(returning: text); pending = nil }
     func setFailure() { fail = true }
@@ -288,6 +291,91 @@ final class VoiceSessionControllerTests: XCTestCase {
         XCTAssertEqual(f.restores, 1)
         XCTAssertEqual(f.voice.phase, .idle)
         XCTAssertFalse(f.overlay.visible)
+        XCTAssertTrue(f.errors.isEmpty)
+    }
+
+    @MainActor
+    func testCancelDuringPreparationStopsBeforeCaptureAndFadesOnce() async {
+        let f = VoiceFixture()
+        defer { f.voice.stopImmediately() }
+        XCTAssertTrue(f.voice.begin())
+        XCTAssertEqual(f.voice.phase, .preparing)
+        f.voice.cancel()
+        f.voice.cancel() // Repeated Escape must not restart the exit animation.
+        f.voice.finish() // Releasing Shift after Escape must not transcribe.
+        XCTAssertEqual(f.voice.phase, .closing)
+        XCTAssertTrue(f.overlay.visible)
+        XCTAssertEqual(f.overlay.hides, 1)
+        XCTAssertEqual(f.exits, 1)
+        XCTAssertEqual(f.restores, 1)
+        f.overlay.completeFade()
+        try? await Task.sleep(for: .milliseconds(20))
+        let starts = await f.capture.starts.count
+        let requests = await f.transcriber.requests
+        XCTAssertEqual(starts, 0)
+        XCTAssertEqual(requests, 0)
+        XCTAssertEqual(f.voice.phase, .idle)
+    }
+
+    @MainActor
+    func testCancelWhileListeningStopsCaptureWithoutTranscribing() async {
+        let f = VoiceFixture()
+        defer { f.voice.stopImmediately() }
+        await listen(f)
+        f.voice.cancel()
+        f.voice.finish()
+        XCTAssertFalse(f.microphone.isRecording)
+        XCTAssertEqual(f.voice.phase, .closing)
+        XCTAssertTrue(f.overlay.visible)
+        await waitUntil { await f.capture.stops.count == 1 }
+        await f.capture.firstAudio()
+        await f.capture.intensities([1])
+        f.overlay.completeFade()
+        try? await Task.sleep(for: .milliseconds(20))
+        let requests = await f.transcriber.requests
+        XCTAssertEqual(requests, 0)
+        XCTAssertTrue(f.overlay.intensityBatches.isEmpty)
+        XCTAssertTrue(f.pasted.isEmpty)
+        XCTAssertTrue(f.errors.isEmpty)
+        XCTAssertEqual(f.voice.phase, .idle)
+    }
+
+    @MainActor
+    func testCancelDuringTranscriptionIgnoresLateResultAfterNextSessionBegins() async {
+        let f = VoiceFixture()
+        defer { f.voice.stopImmediately() }
+        await listen(f)
+        f.voice.finish()
+        await waitUntil { await f.transcriber.requests == 1 }
+        f.voice.cancel()
+        XCTAssertEqual(f.voice.phase, .closing)
+        XCTAssertEqual(f.overlay.hides, 1)
+        XCTAssertTrue(f.overlay.visible)
+        XCTAssertFalse(f.voice.begin())
+        f.overlay.completeFade()
+        XCTAssertTrue(f.voice.begin())
+        await f.transcriber.complete(text: "cancelled transcript")
+        await waitUntil { await f.transcriber.wasCancelled }
+        XCTAssertEqual(f.voice.phase, .preparing)
+        XCTAssertTrue(f.overlay.visible)
+        XCTAssertTrue(f.pasted.isEmpty)
+        XCTAssertTrue(f.errors.isEmpty)
+        XCTAssertEqual(f.restores, 1)
+    }
+
+    @MainActor
+    func testCancelWithMissingKeyAndWhileIdle() {
+        let f = VoiceFixture()
+        defer { f.voice.stopImmediately() }
+        f.voice.cancel()
+        XCTAssertEqual(f.overlay.hides, 0)
+        f.key = nil
+        XCTAssertTrue(f.voice.begin())
+        f.voice.cancel()
+        XCTAssertEqual(f.voice.phase, .closing)
+        XCTAssertEqual(f.overlay.hides, 1)
+        f.overlay.completeFade()
+        XCTAssertEqual(f.voice.phase, .idle)
         XCTAssertTrue(f.errors.isEmpty)
     }
 

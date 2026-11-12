@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import Combine
 import CoreGraphics
 import IOKit.hidsystem
@@ -327,7 +328,8 @@ final class ShiftMonitor: ObservableObject {
     }
 
     private func startTap() {
-        let mask = CGEventMask(1) << CGEventType.flagsChanged.rawValue
+        let mask = (CGEventMask(1) << CGEventType.flagsChanged.rawValue)
+            | (CGEventMask(1) << CGEventType.keyDown.rawValue)
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .tailAppendEventTap,
@@ -340,7 +342,8 @@ final class ShiftMonitor: ObservableObject {
                 // This tap is attached exclusively to the main run loop. Read
                 // edges synchronously so queued events cannot outlive the tap.
                 MainActor.assumeIsolated {
-                    monitor.receive(type: type, flags: flags)
+                    monitor.receive(type: type, flags: flags,
+                                    keyCode: event.getIntegerValueField(.keyboardEventKeycode))
                 }
                 return Unmanaged.passUnretained(event)
             },
@@ -369,12 +372,23 @@ final class ShiftMonitor: ObservableObject {
         status = .monitoring
     }
 
-    private func receive(type: CGEventType, flags: UInt64) {
+    private func receive(type: CGEventType, flags: UInt64, keyCode: Int64) {
         guard started, eventTap != nil else { return }
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             // Recreate the tap and synchronize after an interruption.
             stopTap()
             refreshPermission()
+            return
+        }
+        if type == .keyDown && keyCode == Int64(kVK_Escape) {
+            let generation = tapGeneration
+            // Queue alongside chord edges so Escape also cancels a pending begin.
+            // Keep the chord latched until release; held Shift keys cannot restart it.
+            Task { @MainActor [weak self] in
+                guard let self, self.started, self.status == .monitoring,
+                      self.tapGeneration == generation else { return }
+                self.voiceSession.cancel()
+            }
             return
         }
         guard type == .flagsChanged else { return }

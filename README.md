@@ -20,4 +20,6 @@ Follow the setup wizard to grant permissions and enter your API key. OpenAI API 
 2. Hold **left Shift + right Shift** and speak.
 3. Release either Shift to transcribe and insert your words.
 
+Press **Escape** at any time to cancel recording or transcription. The overlay fades and collapses as it closes.
+
 Use the menu bar icon to change your API key, choose a language hint, or enable **Launch at Login**. Green means ready; red means setup needs attention.
