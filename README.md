@@ -22,6 +22,6 @@ Follow the setup wizard to grant permissions and enter your API key. OpenAI API 
 
 Press **Escape** at any time to cancel recording or transcription. The overlay fades and collapses as it closes.
 
-The overlay shows elapsed seconds, buffer usage, and estimated recording time remaining. Its single circle responds to your current volume and turns red at 20 MB. Recording automatically stops and transcribes at 24 MB (about 12½ minutes). Audio stays in memory as 16 kHz, 16-bit mono PCM and is uploaded as WAV.
+The overlay shows elapsed seconds, buffer usage, and estimated recording time remaining. Its single circle responds to your current volume and turns red after five minutes or at 20 MB, whichever comes first. Recording automatically stops and transcribes after six minutes or at 24 MB. Audio stays in memory as 16 kHz, 16-bit mono PCM and is uploaded as WAV.
 
 Use the menu bar icon to change your API key, choose a language hint, or enable **Launch at Login**. Green means ready; red means setup needs attention.

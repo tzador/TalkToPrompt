@@ -301,6 +301,44 @@ final class VoiceSessionControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testFiveMinuteWarningAndSixMinuteCutoffUseTimeSinceFirstAudio() async {
+        let f = VoiceFixture()
+        defer { f.voice.stopImmediately() }
+        XCTAssertTrue(f.voice.begin())
+        await waitUntil { await f.capture.starts.count == 1 }
+        f.clock = 1000 // Time waiting for the microphone is excluded.
+        await f.capture.firstAudio()
+        await waitUntil { f.voice.phase == .listening }
+        XCTAssertEqual(f.overlay.bufferUsage.remainingSeconds, 360)
+        f.clock = 1299.999
+        f.voice.updateStatus()
+        XCTAssertFalse(f.overlay.bufferUsage.isWarning)
+        f.clock = 1300
+        f.voice.updateStatus()
+        XCTAssertTrue(f.overlay.bufferUsage.isWarning)
+        XCTAssertEqual(f.overlay.bufferUsage.remainingSeconds, 60)
+        XCTAssertEqual(f.voice.phase, .listening)
+        f.clock = 1359.999
+        f.voice.updateStatus()
+        XCTAssertEqual(f.voice.phase, .listening)
+        f.clock = 1360
+        f.voice.updateStatus()
+        XCTAssertEqual(f.voice.phase, .transcribing)
+        XCTAssertEqual(f.overlay.bufferUsage.remainingSeconds, 0)
+        await waitUntil { await f.transcriber.requests == 1 }
+        f.voice.updateStatus()
+        f.voice.finish()
+        f.voice.cancel()
+        f.overlay.completeFade()
+        await f.transcriber.complete(text: "cancelled at six minutes")
+        await waitUntil { await f.transcriber.wasCancelled }
+        XCTAssertTrue(f.pasted.isEmpty)
+        XCTAssertTrue(f.errors.isEmpty)
+        let requests = await f.transcriber.requests
+        XCTAssertEqual(requests, 1)
+    }
+
+    @MainActor
     func testBufferWarningUpdatesBeforeAutomaticCutoffTranscribesExactlyOnce() async {
         let f = VoiceFixture()
         defer { f.voice.stopImmediately() }

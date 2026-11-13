@@ -82,7 +82,7 @@ final class DesktopOverlayControllerTests: XCTestCase {
             XCTAssertFalse(view.visualization.isWarning)
             XCTAssertEqual(view.visualization.circle.fillColor, NSColor.white.cgColor)
             XCTAssertEqual(view.bufferLabel.stringValue, "0.0% buffer used")
-            XCTAssertEqual(view.remainingLabel.stringValue, "~749 seconds remaining")
+            XCTAssertEqual(view.remainingLabel.stringValue, "~360 seconds remaining")
         }
     }
 

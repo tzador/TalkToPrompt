@@ -67,7 +67,7 @@ final class VoiceSessionController {
         microphone.onFailure = { [weak self] in self?.close() }
         microphone.onBufferUsage = { [weak self] usage in
             guard let self, self.phase == .listening || self.phase == .preparing else { return }
-            if usage.isWarning { self.overlay.setBufferUsage(usage) }
+            if usage.isWarning { self.updateStatus() }
             if usage.isFull { self.finish() }
         }
     }
@@ -147,8 +147,11 @@ final class VoiceSessionController {
     func updateStatus() {
         switch phase {
         case .listening:
-            overlay.setMessage(message("Listening", elapsed: now() - recordingStartedAt))
-            overlay.setBufferUsage(microphone.bufferUsage)
+            let elapsed = max(now() - recordingStartedAt, microphone.bufferUsage.elapsedSeconds)
+            let usage = RecordingBufferUsage(byteCount: microphone.bufferUsage.byteCount, elapsedSeconds: elapsed)
+            overlay.setMessage(message("Listening", elapsed: elapsed))
+            overlay.setBufferUsage(usage)
+            if usage.isFull { finish() }
         default: break
         }
     }

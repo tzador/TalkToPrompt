@@ -6,12 +6,19 @@ struct RecordingBufferUsage: Equatable, Sendable {
     static let warningBytes = 20_000_000
     static let maximumBytes = 24_000_000
     static let bytesPerSecond = 32_000
+    static let warningSeconds: TimeInterval = 5 * 60
+    static let maximumSeconds: TimeInterval = 6 * 60
+    static let maximumRecordingBytes = headerBytes + Int(maximumSeconds) * bytesPerSecond
     let byteCount: Int
+    var elapsedSeconds: TimeInterval = 0
 
     var fraction: Double { min(1, max(0, Double(byteCount) / Double(Self.maximumBytes))) }
-    var isWarning: Bool { byteCount >= Self.warningBytes }
-    var isFull: Bool { byteCount >= Self.maximumBytes }
-    var remainingSeconds: Int { max(0, Self.maximumBytes - byteCount) / Self.bytesPerSecond }
+    var isWarning: Bool { byteCount >= Self.warningBytes || elapsedSeconds >= Self.warningSeconds }
+    var isFull: Bool { byteCount >= Self.maximumBytes || elapsedSeconds >= Self.maximumSeconds }
+    var remainingSeconds: Int {
+        min(max(0, Self.maximumBytes - byteCount) / Self.bytesPerSecond,
+            Int(max(0, Self.maximumSeconds - elapsedSeconds)))
+    }
     static let empty = Self(byteCount: headerBytes)
 }
 
@@ -115,7 +122,7 @@ final class PCMRecordingCapture: @unchecked Sendable {
         AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16_000, channels: 1, interleaved: true)!
     }
 
-    init(inputFormat: AVAudioFormat, maximumWaveBytes: Int = RecordingBufferUsage.maximumBytes) throws {
+    init(inputFormat: AVAudioFormat, maximumWaveBytes: Int = RecordingBufferUsage.maximumRecordingBytes) throws {
         guard let converter = AVAudioConverter(from: inputFormat, to: Self.format) else {
             throw MicrophoneRecorder.RecordingError.conversionFailed
         }
@@ -130,7 +137,9 @@ final class PCMRecordingCapture: @unchecked Sendable {
         defer { lock.unlock() }
         guard !finished, !full, buffer.frameLength > 0 else { return nil }
         try convert(buffer)
-        let usage = RecordingBufferUsage(byteCount: audio.waveByteCount)
+        let byteCount = audio.waveByteCount
+        let usage = RecordingBufferUsage(byteCount: byteCount,
+            elapsedSeconds: Double(byteCount - RecordingBufferUsage.headerBytes) / Double(RecordingBufferUsage.bytesPerSecond))
         guard usage.byteCount > RecordingBufferUsage.headerBytes else { return nil }
         let first = !started
         started = true

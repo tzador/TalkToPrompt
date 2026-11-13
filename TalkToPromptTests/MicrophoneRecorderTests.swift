@@ -206,7 +206,7 @@ final class MicrophoneRecorderTests: XCTestCase {
 
     func testBufferUsageIncludesHeaderAndUses24MBAsCapacity() {
         XCTAssertEqual(RecordingBufferUsage.empty.byteCount, 44)
-        XCTAssertEqual(RecordingBufferUsage.empty.remainingSeconds, 749)
+        XCTAssertEqual(RecordingBufferUsage.empty.remainingSeconds, 360)
         XCTAssertFalse(RecordingBufferUsage(byteCount: 19_999_999).isWarning)
         let warning = RecordingBufferUsage(byteCount: 20_000_000)
         XCTAssertTrue(warning.isWarning)
@@ -217,6 +217,35 @@ final class MicrophoneRecorderTests: XCTestCase {
         XCTAssertTrue(full.isFull)
         XCTAssertEqual(full.fraction, 1)
         XCTAssertEqual(full.remainingSeconds, 0)
+    }
+
+    func testTimeThresholdsWarnAtFiveMinutesAndStopAtSix() {
+        let bytes = RecordingBufferUsage.headerBytes
+        XCTAssertFalse(RecordingBufferUsage(byteCount: bytes, elapsedSeconds: 299.999).isWarning)
+        let warning = RecordingBufferUsage(byteCount: bytes, elapsedSeconds: 300)
+        XCTAssertTrue(warning.isWarning)
+        XCTAssertFalse(warning.isFull)
+        XCTAssertEqual(warning.remainingSeconds, 60)
+        XCTAssertFalse(RecordingBufferUsage(byteCount: bytes, elapsedSeconds: 359.999).isFull)
+        let full = RecordingBufferUsage(byteCount: bytes, elapsedSeconds: 360)
+        XCTAssertTrue(full.isFull)
+        XCTAssertEqual(full.remainingSeconds, 0)
+    }
+
+    func testCaptureCannotRetainMoreThanSixMinutesEvenWithoutUICallback() throws {
+        let input = try tone(frequency: 1000, sampleRate: 16_000, frames: 16_000 * 60)
+        let capture = try PCMRecordingCapture(inputFormat: input.format)
+        var lastUsage = RecordingBufferUsage.empty
+        for _ in 0..<7 {
+            if let update = try capture.append(input) { lastUsage = update.usage }
+        }
+        XCTAssertTrue(lastUsage.isFull)
+        XCTAssertEqual(lastUsage.elapsedSeconds, 360)
+        XCTAssertEqual(lastUsage.byteCount, 11_520_044)
+        XCTAssertNil(try capture.append(input))
+        let recording = capture.finish()
+        XCTAssertEqual(recording.duration, 360)
+        XCTAssertEqual(try recording.makeWaveData().count, 11_520_044)
     }
 
     func testReleaseBeforeHardwareStartCancelsWithoutOpeningMicrophone() async {
