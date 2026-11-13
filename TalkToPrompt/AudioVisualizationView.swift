@@ -4,7 +4,8 @@ import QuartzCore
 /// Circle and dimmer share radius animations so their translucent fills never overlap.
 @MainActor
 final class AudioVisualizationView: NSView {
-    static let centralOpacity: Float = 0.45
+    static let centralOpacity: Float = 1
+    static let volumeAnimationDuration: TimeInterval = 0.12
     static let dimmingOpacity: CGFloat = 0.40
     static let intensityGain: CGFloat = 0.8
     static let processingPeriod: TimeInterval = 2.4
@@ -93,7 +94,7 @@ final class AudioVisualizationView: NSView {
         intensity = value.isFinite ? min(1, max(0, value)) : 0
         // Let the entrance complete without live audio replacing its animation.
         guard !animated || CACurrentMediaTime() >= visibilityTransitionEnds else { return }
-        transitionRadius(to: currentRadius, duration: animated ? 0.06 : 0)
+        transitionRadius(to: currentRadius, duration: animated ? Self.volumeAnimationDuration : 0)
     }
 
     private var currentRadius: CGFloat {
@@ -125,7 +126,7 @@ final class AudioVisualizationView: NSView {
                 animation.fromValue = current
                 animation.toValue = path
                 animation.duration = duration
-                animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                animation.timingFunction = CAMediaTimingFunction(name: key == "path" ? .easeOut : .easeInEaseOut)
                 shape.add(animation, forKey: key)
             }
         }

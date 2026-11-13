@@ -5,6 +5,36 @@ import XCTest
 
 final class DesktopOverlayControllerTests: XCTestCase {
     @MainActor
+    func testTimerUsesMinutesAndSecondsAboveMonospacedListeningLabel() throws {
+        let view = DesktopOverlayController.OverlayContentView(frame: NSRect(x: 0, y: 0, width: 800, height: 800))
+        for (seconds, expected) in [(0, "00:00"), (17, "00:17"), (59, "00:59"), (60, "01:00"), (65, "01:05"), (359, "05:59")] {
+            view.setMessage("Listening... \(seconds) seconds")
+            view.layoutSubtreeIfNeeded()
+            XCTAssertEqual(view.counterLabel.stringValue, expected)
+            XCTAssertGreaterThan(view.counterLabel.frame.minY, view.statusLabel.frame.maxY)
+            for label in [view.statusLabel, view.counterLabel] {
+                XCTAssertTrue(try XCTUnwrap(label.font).isFixedPitch)
+            }
+        }
+        view.setMessage("Transcribing...")
+        XCTAssertTrue(view.counterLabel.isHidden)
+        XCTAssertEqual(view.visualization.circle.opacity, 1)
+    }
+
+    @MainActor
+    func testVolumeTransitionsAreSmoothedForBothCircleAndDimmer() throws {
+        let view = AudioVisualizationView(frame: NSRect(x: 0, y: 0, width: 800, height: 800))
+        view.setState(listening: true, processing: false, visible: true)
+        view.animateVisibility(visible: true, duration: 0)
+        for volume: Float in [0.8, 0.1] {
+            view.updateIntensity(volume)
+            let animation = try XCTUnwrap(view.circle.animation(forKey: "path") as? CABasicAnimation)
+            XCTAssertEqual(animation.duration, 0.12)
+            XCTAssertEqual(view.dimmer.animation(forKey: "path")?.duration, animation.duration)
+        }
+    }
+
+    @MainActor
     func testDimmerExcludesCircleDuringVolumePulseAndCollapseAnimations() throws {
         let view = AudioVisualizationView(frame: NSRect(x: 0, y: 0, width: 800, height: 800))
         view.setState(listening: true, processing: false, visible: true)
@@ -85,7 +115,7 @@ final class DesktopOverlayControllerTests: XCTestCase {
     }
 
     @MainActor
-    func testBufferWarningMetricsAndVolumeAreInheritedAcrossScreensAndReset() throws {
+    func testWarningAndVolumeAreInheritedWithoutDisplayingBufferReport() throws {
         var frames = [NSRect(x: 0, y: 0, width: 800, height: 800)]
         let overlay = DesktopOverlayController(screenFrames: { frames })
         defer { overlay.stop() }
@@ -104,20 +134,17 @@ final class DesktopOverlayControllerTests: XCTestCase {
             XCTAssertTrue(view.visualization.isWarning)
             XCTAssertEqual(view.visualization.circle.fillColor, NSColor.systemRed.cgColor)
             XCTAssertEqual(view.visualization.intensity, 0.7)
-            XCTAssertEqual(view.counterLabel.stringValue, "625 seconds passed")
-            XCTAssertEqual(view.bufferLabel.stringValue, "83.3% buffer used")
-            XCTAssertEqual(view.bufferLabel.textColor, DesktopOverlayController.OverlayContentView.secondaryTextColor)
-            XCTAssertEqual(view.remainingLabel.stringValue, "125 seconds remaining")
-            XCTAssertFalse(view.bufferLabel.isHidden)
-            XCTAssertFalse(view.remainingLabel.isHidden)
-            XCTAssertLessThan(view.remainingLabel.frame.maxY, view.statusLabel.frame.minY)
-            XCTAssertLessThan(view.bufferLabel.frame.maxY, view.remainingLabel.frame.minY)
+            XCTAssertEqual(view.counterLabel.stringValue, "10:25")
+            let labels = view.captionSurface.subviews.compactMap { $0 as? NSTextField }
+            XCTAssertEqual(labels.count, 2)
+            XCTAssertFalse(labels.contains { $0.stringValue.contains("%") || $0.stringValue.contains("remaining") })
+            XCTAssertEqual(view.visualization.circle.opacity, 1)
+            XCTAssertGreaterThan(view.counterLabel.frame.minY, view.statusLabel.frame.maxY)
         }
         overlay.setMessage("Transcribing...")
         for panel in overlay.panels {
             let view = try XCTUnwrap(panel.contentView as? DesktopOverlayController.OverlayContentView)
-            XCTAssertTrue(view.bufferLabel.isHidden)
-            XCTAssertTrue(view.remainingLabel.isHidden)
+            XCTAssertTrue(view.counterLabel.isHidden)
             XCTAssertTrue(view.visualization.isWarning)
         }
         overlay.setBufferUsage(.empty)
@@ -126,8 +153,7 @@ final class DesktopOverlayControllerTests: XCTestCase {
             let view = try XCTUnwrap(panel.contentView as? DesktopOverlayController.OverlayContentView)
             XCTAssertFalse(view.visualization.isWarning)
             XCTAssertEqual(view.visualization.circle.fillColor, NSColor.white.cgColor)
-            XCTAssertEqual(view.bufferLabel.stringValue, "0.0% buffer used")
-            XCTAssertEqual(view.remainingLabel.stringValue, "360 seconds remaining")
+            XCTAssertEqual(view.counterLabel.stringValue, "00:00")
         }
     }
 
@@ -199,7 +225,7 @@ final class DesktopOverlayControllerTests: XCTestCase {
         for panel in overlay.panels {
             let view = try XCTUnwrap(panel.contentView as? DesktopOverlayController.OverlayContentView)
             XCTAssertEqual(view.statusLabel.stringValue, "Speaking...")
-            XCTAssertEqual(view.counterLabel.stringValue, "4 seconds passed")
+            XCTAssertEqual(view.counterLabel.stringValue, "00:04")
             XCTAssertFalse(view.counterLabel.isHidden)
             XCTAssertEqual(view.counterLabel.font?.pointSize, 20)
             XCTAssertEqual(view.counterLabel.textColor, DesktopOverlayController.OverlayContentView.secondaryTextColor)
@@ -228,7 +254,7 @@ final class DesktopOverlayControllerTests: XCTestCase {
     }
 
     @MainActor
-    func testListeningCaptionIsDarkTranslucentAndCenteredOnlyWhenRequested() throws {
+    func testListeningCaptionIsGrayMonospacedAndCenteredOnlyWhenRequested() throws {
         let overlay = DesktopOverlayController(screenFrames: { [NSRect(x: 0, y: 0, width: 800, height: 600)] })
         defer { overlay.stop() }
         overlay.start()
@@ -238,7 +264,7 @@ final class DesktopOverlayControllerTests: XCTestCase {
         view.layoutSubtreeIfNeeded()
         XCTAssertEqual(view.statusLabel.stringValue, "Listening")
         XCTAssertEqual(view.statusLabel.font?.pointSize, 54)
-        XCTAssertEqual(view.statusLabel.textColor, DesktopOverlayController.OverlayContentView.textColor)
+        XCTAssertEqual(view.statusLabel.textColor, DesktopOverlayController.OverlayContentView.secondaryTextColor)
         XCTAssertFalse(view.statusLabel.isHidden)
         XCTAssertEqual(view.statusLabel.frame.midX, view.bounds.midX, accuracy: 1)
         XCTAssertEqual(view.statusLabel.frame.midY, view.bounds.midY, accuracy: 1)
