@@ -255,7 +255,8 @@ final class DesktopOverlayController: VoiceSessionOverlay {
     }
 
     final class OverlayContentView: NSView {
-        let backgroundTint = NSView()
+        static let textColor = NSColor.black.withAlphaComponent(0.78)
+        static let secondaryTextColor = NSColor.black.withAlphaComponent(0.60)
         let visualization = AudioVisualizationView(frame: .zero)
         let captionSurface = NSView()
         let statusLabel = NSTextField(labelWithString: "")
@@ -271,13 +272,6 @@ final class DesktopOverlayController: VoiceSessionOverlay {
             wantsLayer = true
             layer?.opacity = 0
 
-            backgroundTint.frame = bounds
-            backgroundTint.autoresizingMask = [.width, .height]
-            backgroundTint.wantsLayer = true
-            backgroundTint.layer?.backgroundColor = NSColor.black.cgColor
-            backgroundTint.layer?.opacity = 0.40
-            addSubview(backgroundTint)
-
             visualization.frame = bounds
             visualization.autoresizingMask = [.width, .height]
             addSubview(visualization)
@@ -288,7 +282,7 @@ final class DesktopOverlayController: VoiceSessionOverlay {
             addSubview(captionSurface)
 
             statusLabel.font = .systemFont(ofSize: 36, weight: .bold)
-            statusLabel.textColor = .white
+            statusLabel.textColor = Self.textColor
             statusLabel.alignment = .center
             statusLabel.maximumNumberOfLines = 0
             statusLabel.lineBreakMode = .byWordWrapping
@@ -297,7 +291,7 @@ final class DesktopOverlayController: VoiceSessionOverlay {
             statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             captionSurface.addSubview(statusLabel)
             counterLabel.font = .monospacedDigitSystemFont(ofSize: 20, weight: .regular)
-            counterLabel.textColor = NSColor.white.withAlphaComponent(0.7)
+            counterLabel.textColor = Self.secondaryTextColor
             counterLabel.alignment = .center
             counterLabel.isHidden = true
             counterLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -305,7 +299,7 @@ final class DesktopOverlayController: VoiceSessionOverlay {
             captionSurface.addSubview(counterLabel)
             for label in [bufferLabel, remainingLabel] {
                 label.font = .monospacedDigitSystemFont(ofSize: 16, weight: .regular)
-                label.textColor = NSColor.white.withAlphaComponent(0.7)
+                label.textColor = Self.secondaryTextColor
                 label.alignment = .center
                 label.isHidden = true
                 label.translatesAutoresizingMaskIntoConstraints = false
@@ -317,17 +311,19 @@ final class DesktopOverlayController: VoiceSessionOverlay {
                     label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -16)
                 ])
             }
+            remainingLabel.font = .monospacedDigitSystemFont(ofSize: 20, weight: .regular)
+            bufferLabel.font = .monospacedDigitSystemFont(ofSize: 14, weight: .regular)
             NSLayoutConstraint.activate([
                 statusLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
                 statusLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
                 statusLabel.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 16),
                 statusLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -16),
                 counterLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
-                counterLabel.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 10),
+                counterLabel.bottomAnchor.constraint(equalTo: statusLabel.topAnchor, constant: -10),
                 counterLabel.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 16),
                 counterLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -16),
-                bufferLabel.topAnchor.constraint(equalTo: counterLabel.bottomAnchor, constant: 8),
-                remainingLabel.topAnchor.constraint(equalTo: bufferLabel.bottomAnchor, constant: 6)
+                remainingLabel.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 10),
+                bufferLabel.topAnchor.constraint(equalTo: remainingLabel.bottomAnchor, constant: 8)
             ])
         }
 
@@ -335,7 +331,7 @@ final class DesktopOverlayController: VoiceSessionOverlay {
             let previousWord = statusLabel.stringValue
             if let message, let separator = message.range(of: "... ") {
                 statusLabel.stringValue = String(message[..<separator.lowerBound]) + "..."
-                counterLabel.stringValue = String(message[separator.upperBound...])
+                counterLabel.stringValue = String(message[separator.upperBound...]) + " passed"
             } else {
                 statusLabel.stringValue = message ?? ""
                 counterLabel.stringValue = ""
@@ -366,11 +362,11 @@ final class DesktopOverlayController: VoiceSessionOverlay {
             // Keep the warning color through transcription, until the next session resets it.
             visualization.setWarning(usage.isWarning)
             bufferLabel.stringValue = String(format: "%.1f%% buffer used", usage.fraction * 100)
-            remainingLabel.stringValue = "~\(usage.remainingSeconds) seconds remaining"
+            remainingLabel.stringValue = "\(usage.remainingSeconds) seconds remaining"
             let listening = statusLabel.stringValue == "Listening"
             bufferLabel.isHidden = !listening
             remainingLabel.isHidden = !listening
-            bufferLabel.textColor = .white.withAlphaComponent(0.7)
+            bufferLabel.textColor = Self.secondaryTextColor
         }
 
         func setHighlightedLetter(_ count: Int) {
@@ -382,10 +378,10 @@ final class DesktopOverlayController: VoiceSessionOverlay {
             paragraph.alignment = .center
             let attributed = NSMutableAttributedString(string: text, attributes: [
                 .font: statusLabel.font ?? NSFont.systemFont(ofSize: 36, weight: .bold),
-                .foregroundColor: NSColor.white.withAlphaComponent(0.55),
+                .foregroundColor: Self.secondaryTextColor,
                 .paragraphStyle: paragraph
             ])
-            attributed.addAttribute(.foregroundColor, value: NSColor.white,
+            attributed.addAttribute(.foregroundColor, value: Self.textColor,
                                     range: NSRange(location: count % (text as NSString).length, length: 1))
             statusLabel.attributedStringValue = attributed
         }
