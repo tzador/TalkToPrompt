@@ -7,14 +7,17 @@ private actor SessionCapture: MicrophoneCapturing {
     private(set) var stops: [UUID] = []
     private var callbacks: [UUID: @Sendable () -> Void] = [:]
     private var intensityBatches: [UUID: @Sendable ([Float]) -> Void] = [:]
+    private var usageCallbacks: [UUID: @Sendable (RecordingBufferUsage) -> Void] = [:]
     private var waitForStop = false
     private var stopReply: CheckedContinuation<MicrophoneRecording?, Never>?
 
     func start(id: UUID, onFirstAudio: @escaping @Sendable () -> Void, onFailure: @escaping @Sendable (String) -> Void,
-               onIntensities: @escaping @Sendable ([Float]) -> Void) {
+               onIntensities: @escaping @Sendable ([Float]) -> Void,
+               onBufferUsage: @escaping @Sendable (RecordingBufferUsage) -> Void) {
         starts.append(id)
         callbacks[id] = onFirstAudio
         intensityBatches[id] = onIntensities
+        usageCallbacks[id] = onBufferUsage
     }
     func stop(id: UUID) async -> MicrophoneRecording? {
         stops.append(id)
@@ -23,6 +26,7 @@ private actor SessionCapture: MicrophoneCapturing {
     }
     func firstAudio() { if let id = starts.last { callbacks[id]?() } }
     func intensities(_ values: [Float]) { if let id = starts.last { intensityBatches[id]?(values) } }
+    func usage(_ bytes: Int) { if let id = starts.last { usageCallbacks[id]?(.init(byteCount: bytes)) } }
     func delayStop() { waitForStop = true }
     func completeStop() { stopReply?.resume(returning: Self.recording); stopReply = nil }
     private static var recording: MicrophoneRecording {
@@ -36,11 +40,13 @@ private final class SessionOverlay: VoiceSessionOverlay {
     var visible = false
     var message: String?
     var intensityBatches: [[Float]] = []
+    var bufferUsage = RecordingBufferUsage.empty
     var hides = 0
     var completions: [() -> Void] = []
     func show() { visible = true }
     func setMessage(_ message: String?) { self.message = message }
     func appendIntensities(_ values: [Float]) { intensityBatches.append(values) }
+    func setBufferUsage(_ usage: RecordingBufferUsage) { bufferUsage = usage }
     func hide(completion: (() -> Void)?) {
         hides += 1
         if !visible { completion?() }
@@ -292,6 +298,54 @@ final class VoiceSessionControllerTests: XCTestCase {
         XCTAssertEqual(f.voice.phase, .idle)
         XCTAssertFalse(f.overlay.visible)
         XCTAssertTrue(f.errors.isEmpty)
+    }
+
+    @MainActor
+    func testBufferWarningUpdatesBeforeAutomaticCutoffTranscribesExactlyOnce() async {
+        let f = VoiceFixture()
+        defer { f.voice.stopImmediately() }
+        await listen(f)
+        XCTAssertEqual(f.overlay.bufferUsage, .empty)
+        await f.capture.usage(20_000_000)
+        await waitUntil { f.overlay.bufferUsage.isWarning }
+        XCTAssertEqual(f.voice.phase, .listening)
+        XCTAssertEqual(f.overlay.bufferUsage.remainingSeconds, 125)
+        await f.capture.usage(23_999_998)
+        await waitUntil { f.overlay.bufferUsage.byteCount == 23_999_998 }
+        XCTAssertEqual(f.voice.phase, .listening)
+        await f.capture.usage(24_000_000)
+        await waitUntil { await f.transcriber.requests == 1 }
+        XCTAssertEqual(f.voice.phase, .transcribing)
+        XCTAssertEqual(f.overlay.bufferUsage.fraction, 1)
+        XCTAssertFalse(f.microphone.isRecording)
+        f.voice.finish() // A later Shift release must not send a second request.
+        await f.capture.usage(24_000_000)
+        await f.transcriber.complete()
+        await waitUntil { f.voice.phase == .closing }
+        let requests = await f.transcriber.requests
+        XCTAssertEqual(requests, 1)
+        XCTAssertEqual(f.pasted, ["hello, world"])
+    }
+
+    @MainActor
+    func testEscapeAfterAutomaticCutoffCancelsTranscriptionAndDoesNotPaste() async {
+        let f = VoiceFixture()
+        defer { f.voice.stopImmediately() }
+        await listen(f)
+        await f.capture.usage(24_000_000)
+        await waitUntil { await f.transcriber.requests == 1 }
+        f.voice.cancel()
+        XCTAssertEqual(f.voice.phase, .closing)
+        XCTAssertEqual(f.restores, 1)
+        f.overlay.completeFade()
+        await f.transcriber.complete(text: "do not paste this")
+        await waitUntil { await f.transcriber.wasCancelled }
+        XCTAssertEqual(f.voice.phase, .idle)
+        XCTAssertTrue(f.pasted.isEmpty)
+        XCTAssertTrue(f.errors.isEmpty)
+        XCTAssertFalse(f.overlay.visible)
+        XCTAssertTrue(f.voice.begin())
+        XCTAssertEqual(f.overlay.bufferUsage, .empty)
     }
 
     @MainActor

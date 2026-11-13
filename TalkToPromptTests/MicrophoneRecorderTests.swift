@@ -12,7 +12,8 @@ private actor FakeMicrophoneCapture: MicrophoneCapturing {
     func start(
         id: UUID, onFirstAudio: @escaping @Sendable () -> Void,
         onFailure: @escaping @Sendable (String) -> Void,
-        onIntensities: @escaping @Sendable ([Float]) -> Void
+        onIntensities: @escaping @Sendable ([Float]) -> Void,
+        onBufferUsage: @escaping @Sendable (RecordingBufferUsage) -> Void
     ) throws {
         if failStart { throw NSError(domain: "MicrophoneTest", code: 1) }
         starts.append(id)
@@ -142,6 +143,80 @@ final class MicrophoneRecorderTests: XCTestCase {
         let audio = InMemoryAudioCapture(format: format)
         XCTAssertFalse(audio.append(buffer))
         XCTAssertTrue(audio.finish().chunks.isEmpty)
+    }
+
+    func testStreamingConversionProduces16kHz16BitMonoWAVFromCommonInputFormats() throws {
+        for rate in [16_000.0, 44_100.0, 48_000.0] {
+            for channels: UInt32 in [1, 2] {
+                let input = try tone(frequency: 1000, sampleRate: rate, frames: UInt32(rate / 100), channels: channels)
+                let capture = try PCMRecordingCapture(inputFormat: input.format)
+                var firstCallbacks = 0
+                var previousBytes = RecordingBufferUsage.headerBytes
+                for _ in 0..<100 {
+                    if let update = try capture.append(input) {
+                        if update.first { firstCallbacks += 1 }
+                        XCTAssertGreaterThanOrEqual(update.usage.byteCount, previousBytes)
+                        previousBytes = update.usage.byteCount
+                    }
+                }
+                let recording = capture.finish()
+                XCTAssertEqual(firstCallbacks, 1)
+                XCTAssertEqual(recording.sampleRate, 16_000)
+                XCTAssertEqual(recording.channelCount, 1)
+                XCTAssertEqual(recording.commonFormat, .pcmFormatInt16)
+                XCTAssertTrue(recording.isInterleaved)
+                XCTAssertEqual(Double(recording.frameCount), 16_000, accuracy: 2)
+                let wave = try recording.makeWaveData()
+                XCTAssertEqual(wave.count, 44 + Int(recording.frameCount) * 2)
+                // WAV: PCM code 1, mono, 16000 Hz, 16 bits per sample.
+                XCTAssertEqual(wave[20], 1)
+                XCTAssertEqual(wave[22], 1)
+                XCTAssertEqual(wave[24..<28], Data([0x80, 0x3e, 0, 0]))
+                XCTAssertEqual(wave[34], 16)
+                XCTAssertTrue(recording.chunks.contains { chunk in
+                    chunk.planes[0].contains { $0 != 0 }
+                })
+                XCTAssertNil(try capture.append(input))
+            }
+        }
+    }
+
+    func testStreamingConversionIncludesBothStereoChannelsInMonoOutput() throws {
+        let input = try tone(frequency: 1000, frames: 4800, channels: 2)
+        for frame in 0..<4800 { input.floatChannelData![0][frame] = 0 }
+        let capture = try PCMRecordingCapture(inputFormat: input.format)
+        _ = try capture.append(input)
+        let recording = capture.finish()
+        XCTAssertTrue(recording.chunks.contains { $0.planes[0].contains { $0 != 0 } })
+    }
+
+    func testCaptureTrimsLastChunkAtExactWAVLimitAndRejectsLaterAudio() throws {
+        let input = try tone(frequency: 1000, frames: 8192, channels: 2)
+        // A small injected budget exercises the real conversion/cutoff without a long recording.
+        let limit = 44 + 3200
+        let capture = try PCMRecordingCapture(inputFormat: input.format, maximumWaveBytes: limit)
+        let update = try XCTUnwrap(capture.append(input))
+        XCTAssertTrue(update.first)
+        XCTAssertEqual(update.usage.byteCount, limit)
+        XCTAssertNil(try capture.append(input))
+        let recording = capture.finish()
+        XCTAssertEqual(recording.frameCount, 1600)
+        XCTAssertEqual(try recording.makeWaveData().count, limit)
+    }
+
+    func testBufferUsageIncludesHeaderAndUses24MBAsCapacity() {
+        XCTAssertEqual(RecordingBufferUsage.empty.byteCount, 44)
+        XCTAssertEqual(RecordingBufferUsage.empty.remainingSeconds, 749)
+        XCTAssertFalse(RecordingBufferUsage(byteCount: 19_999_999).isWarning)
+        let warning = RecordingBufferUsage(byteCount: 20_000_000)
+        XCTAssertTrue(warning.isWarning)
+        XCTAssertEqual(warning.fraction, 5.0 / 6, accuracy: 0.000001)
+        XCTAssertEqual(warning.remainingSeconds, 125)
+        XCTAssertFalse(warning.isFull)
+        let full = RecordingBufferUsage(byteCount: 24_000_000)
+        XCTAssertTrue(full.isFull)
+        XCTAssertEqual(full.fraction, 1)
+        XCTAssertEqual(full.remainingSeconds, 0)
     }
 
     func testReleaseBeforeHardwareStartCancelsWithoutOpeningMicrophone() async {

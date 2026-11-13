@@ -1,6 +1,20 @@
 import AVFoundation
 import Foundation
 
+struct RecordingBufferUsage: Equatable, Sendable {
+    static let headerBytes = 44
+    static let warningBytes = 20_000_000
+    static let maximumBytes = 24_000_000
+    static let bytesPerSecond = 32_000
+    let byteCount: Int
+
+    var fraction: Double { min(1, max(0, Double(byteCount) / Double(Self.maximumBytes))) }
+    var isWarning: Bool { byteCount >= Self.warningBytes }
+    var isFull: Bool { byteCount >= Self.maximumBytes }
+    var remainingSeconds: Int { max(0, Self.maximumBytes - byteCount) / Self.bytesPerSecond }
+    static let empty = Self(byteCount: headerBytes)
+}
+
 struct MicrophoneRecording: Sendable {
     struct Chunk: Sendable {
         let frameCount: UInt32
@@ -27,28 +41,50 @@ final class InMemoryAudioCapture: @unchecked Sendable {
     private let isInterleaved: Bool
     private var chunks: [MicrophoneRecording.Chunk] = []
     private var acceptingAudio = true
+    private var dataByteCount = 0
+    private let maximumWaveBytes: Int?
+    private let bytesPerFrame: Int
 
-    init(format: AVAudioFormat) {
+    init(format: AVAudioFormat, maximumWaveBytes: Int? = nil) {
         sampleRate = format.sampleRate
         channelCount = format.channelCount
         commonFormat = format.commonFormat
         isInterleaved = format.isInterleaved
+        self.maximumWaveBytes = maximumWaveBytes
+        bytesPerFrame = Int(format.streamDescription.pointee.mBytesPerFrame)
+            * (format.isInterleaved ? 1 : Int(format.channelCount))
+    }
+
+    var waveByteCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return RecordingBufferUsage.headerBytes + dataByteCount
     }
 
     /// Returns true only for the first captured chunk.
     func append(_ buffer: AVAudioPCMBuffer) -> Bool {
         guard buffer.frameLength > 0 else { return false }
+        lock.lock()
+        defer { lock.unlock() }
+        guard acceptingAudio else { return false }
+        let availableFrames = maximumWaveBytes.map {
+            max(0, $0 - RecordingBufferUsage.headerBytes - dataByteCount) / bytesPerFrame
+        } ?? Int(buffer.frameLength)
+        let frames = min(Int(buffer.frameLength), availableFrames)
+        guard frames > 0 else { acceptingAudio = false; return false }
         let buffers = UnsafeMutableAudioBufferListPointer(buffer.mutableAudioBufferList)
         var planes: [Data] = []
         for audioBuffer in buffers {
             guard let bytes = audioBuffer.mData else { return false }
-            planes.append(Data(bytes: bytes, count: Int(audioBuffer.mDataByteSize)))
+            let planeBytes = frames * bytesPerFrame / (isInterleaved ? 1 : Int(channelCount))
+            planes.append(Data(bytes: bytes, count: planeBytes))
         }
-        lock.lock()
-        defer { lock.unlock() }
-        guard acceptingAudio else { return false }
         let first = chunks.isEmpty
-        chunks.append(.init(frameCount: buffer.frameLength, planes: planes))
+        chunks.append(.init(frameCount: UInt32(frames), planes: planes))
+        dataByteCount += frames * bytesPerFrame
+        if let maximumWaveBytes, dataByteCount + RecordingBufferUsage.headerBytes >= maximumWaveBytes {
+            acceptingAudio = false
+        }
         return first
     }
 
@@ -65,12 +101,82 @@ final class InMemoryAudioCapture: @unchecked Sendable {
     }
 }
 
+/// Resamples each tap buffer immediately; only bounded 16 kHz mono Int16 PCM is retained.
+/// The lock also serializes converter finalization with the last audio callback.
+final class PCMRecordingCapture: @unchecked Sendable {
+    private let lock = NSLock()
+    private let converter: AVAudioConverter
+    private let audio: InMemoryAudioCapture
+    private let maximumWaveBytes: Int
+    private var finished = false
+    private var started = false
+    private var full = false
+    static var format: AVAudioFormat {
+        AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16_000, channels: 1, interleaved: true)!
+    }
+
+    init(inputFormat: AVAudioFormat, maximumWaveBytes: Int = RecordingBufferUsage.maximumBytes) throws {
+        guard let converter = AVAudioConverter(from: inputFormat, to: Self.format) else {
+            throw MicrophoneRecorder.RecordingError.conversionFailed
+        }
+        converter.downmix = true
+        self.converter = converter
+        self.maximumWaveBytes = maximumWaveBytes
+        audio = InMemoryAudioCapture(format: Self.format, maximumWaveBytes: maximumWaveBytes)
+    }
+
+    func append(_ buffer: AVAudioPCMBuffer) throws -> (first: Bool, usage: RecordingBufferUsage)? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !finished, !full, buffer.frameLength > 0 else { return nil }
+        try convert(buffer)
+        let usage = RecordingBufferUsage(byteCount: audio.waveByteCount)
+        guard usage.byteCount > RecordingBufferUsage.headerBytes else { return nil }
+        let first = !started
+        started = true
+        full = usage.byteCount >= maximumWaveBytes
+        return (first, usage)
+    }
+
+    func finish() -> MicrophoneRecording {
+        lock.lock()
+        defer { lock.unlock() }
+        if !finished, !full { try? convert(nil) }
+        finished = true
+        return audio.finish()
+    }
+
+    private func convert(_ input: AVAudioPCMBuffer?) throws {
+        var suppliedInput = false
+        // Fixed output capacity bounds temporary memory even for a large input buffer.
+        guard let output = AVAudioPCMBuffer(pcmFormat: Self.format, frameCapacity: 4096) else {
+            throw MicrophoneRecorder.RecordingError.conversionFailed
+        }
+        while true {
+            var error: NSError?
+            let status = converter.convert(to: output, error: &error) { _, inputStatus in
+                if let input, !suppliedInput {
+                    suppliedInput = true
+                    inputStatus.pointee = .haveData
+                    return input
+                }
+                inputStatus.pointee = input == nil ? .endOfStream : .noDataNow
+                return nil
+            }
+            if status == .error { throw error ?? MicrophoneRecorder.RecordingError.conversionFailed }
+            if output.frameLength > 0 { _ = audio.append(output) }
+            if audio.waveByteCount >= maximumWaveBytes || status != .haveData { return }
+        }
+    }
+}
+
 protocol MicrophoneCapturing: Sendable {
     func start(
         id: UUID,
         onFirstAudio: @escaping @Sendable () -> Void,
         onFailure: @escaping @Sendable (String) -> Void,
-        onIntensities: @escaping @Sendable ([Float]) -> Void
+        onIntensities: @escaping @Sendable ([Float]) -> Void,
+        onBufferUsage: @escaping @Sendable (RecordingBufferUsage) -> Void
     ) async throws
     func stop(id: UUID) async -> MicrophoneRecording?
 }
@@ -82,7 +188,7 @@ actor MicrophoneRecorder: MicrophoneCapturing {
         let id: UUID
         let engine: AVAudioEngine
         let input: AVAudioInputNode
-        let audio: InMemoryAudioCapture
+        let audio: PCMRecordingCapture
         let observer: NSObjectProtocol
     }
     private var active: ActiveCapture?
@@ -93,7 +199,8 @@ actor MicrophoneRecorder: MicrophoneCapturing {
         id: UUID,
         onFirstAudio: @escaping @Sendable () -> Void,
         onFailure: @escaping @Sendable (String) -> Void,
-        onIntensities: @escaping @Sendable ([Float]) -> Void = { _ in }
+        onIntensities: @escaping @Sendable ([Float]) -> Void = { _ in },
+        onBufferUsage: @escaping @Sendable (RecordingBufferUsage) -> Void = { _ in }
     ) throws {
         if cancelledBeforeStart.remove(id) != nil { throw CancellationError() }
         if let active {
@@ -106,12 +213,18 @@ actor MicrophoneRecorder: MicrophoneCapturing {
             engine.stop()
             throw RecordingError.noInputDevice
         }
-        let audio = InMemoryAudioCapture(format: format)
+        let audio = try PCMRecordingCapture(inputFormat: format)
         let intensity = AudioIntensityAnalyzer(sampleRate: format.sampleRate)
         input.installTap(onBus: 0, bufferSize: 256, format: format) { buffer, _ in
-            if audio.append(buffer) { onFirstAudio() }
-            let values = intensity.consume(buffer)
-            if !values.isEmpty { onIntensities(values) }
+            do {
+                guard let update = try audio.append(buffer) else { return }
+                if update.first { onFirstAudio() }
+                onBufferUsage(update.usage)
+                let values = intensity.consume(buffer)
+                if !values.isEmpty { onIntensities(values) }
+            } catch {
+                onFailure("The microphone audio could not be converted. Please try again.")
+            }
         }
         do {
             engine.prepare()
@@ -156,7 +269,12 @@ actor MicrophoneRecorder: MicrophoneCapturing {
     }
 
     enum RecordingError: LocalizedError {
-        case noInputDevice
-        var errorDescription: String? { "No working microphone is available." }
+        case noInputDevice, conversionFailed
+        var errorDescription: String? {
+            switch self {
+            case .noInputDevice: return "No working microphone is available."
+            case .conversionFailed: return "The microphone audio could not be converted to 16 kHz mono PCM."
+            }
+        }
     }
 }

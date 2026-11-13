@@ -6,6 +6,7 @@ protocol VoiceSessionOverlay: AnyObject {
     func show()
     func setMessage(_ message: String?)
     func appendIntensities(_ values: [Float])
+    func setBufferUsage(_ usage: RecordingBufferUsage)
     func hide(completion: (() -> Void)?)
     func hideImmediately()
 }
@@ -64,6 +65,11 @@ final class VoiceSessionController {
             self.overlay.appendIntensities(values)
         }
         microphone.onFailure = { [weak self] in self?.close() }
+        microphone.onBufferUsage = { [weak self] usage in
+            guard let self, self.phase == .listening || self.phase == .preparing else { return }
+            if usage.isWarning { self.overlay.setBufferUsage(usage) }
+            if usage.isFull { self.finish() }
+        }
     }
 
     @discardableResult
@@ -72,6 +78,7 @@ final class VoiceSessionController {
         generation = UUID()
         sessionLanguage = TranscriptionLanguage.validated(preferredLanguage())
         phase = .preparing
+        overlay.setBufferUsage(.empty)
         overlay.setMessage(nil)
         overlay.show()
         do {
@@ -141,6 +148,7 @@ final class VoiceSessionController {
         switch phase {
         case .listening:
             overlay.setMessage(message("Listening", elapsed: now() - recordingStartedAt))
+            overlay.setBufferUsage(microphone.bufferUsage)
         default: break
         }
     }

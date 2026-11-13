@@ -5,144 +5,104 @@ import XCTest
 
 final class DesktopOverlayControllerTests: XCTestCase {
     @MainActor
-    func testGeometryGrowsAndShrinksWithOverlayFadeAndStatusCrossfades() throws {
+    func testSingleCircleRespondsToLatestVolumeAndCollapsesWithFade() throws {
         let overlay = DesktopOverlayController(screenFrames: { [NSRect(x: 0, y: 0, width: 800, height: 800)] })
         defer { overlay.stop() }
         overlay.setListening(true)
         overlay.show()
         let view = try XCTUnwrap(overlay.panels.first?.contentView as? DesktopOverlayController.OverlayContentView)
         view.layoutSubtreeIfNeeded()
-        let geometry = view.visualization.geometryLayer
-        let entrance = try XCTUnwrap(geometry.animation(forKey: "radiusScale") as? CABasicAnimation)
-        XCTAssertEqual(entrance.duration, DesktopOverlayController.fadeDuration)
-        XCTAssertEqual((entrance.fromValue as? NSNumber)?.doubleValue, 0)
-        XCTAssertEqual((entrance.toValue as? NSNumber)?.doubleValue, 1)
-        XCTAssertEqual(view.statusLabel.font?.pointSize, 54)
-        overlay.appendIntensities(Array(repeating: 0.8, count: 32))
-        // Live 10 ms updates must not replace the slower entrance animation.
-        XCTAssertEqual(geometry.animation(forKey: "radiusScale")?.duration, DesktopOverlayController.fadeDuration)
+        let visualization = view.visualization
+        XCTAssertEqual(visualization.geometryLayer.sublayers?.count, 1)
+        XCTAssertTrue(visualization.geometryLayer.sublayers?.first === visualization.circle)
+        XCTAssertEqual(visualization.circle.path?.boundingBox.width, visualization.centralRadius * 2)
+        overlay.appendIntensities([1, 0.2, 0.5])
+        XCTAssertEqual(overlay.currentIntensity, 0.5)
+        let bounds = try XCTUnwrap(visualization.circle.path).boundingBox
+        XCTAssertEqual(bounds.width / 2, visualization.centralRadius * (1 + 0.5 * AudioVisualizationView.intensityGain), accuracy: 0.001)
+        XCTAssertEqual(bounds.midX, view.bounds.midX, accuracy: 0.001)
+        XCTAssertEqual(bounds.midY, view.bounds.midY, accuracy: 0.001)
+        XCTAssertEqual(visualization.geometryLayer.animation(forKey: "radiusScale")?.duration, DesktopOverlayController.fadeDuration)
+        overlay.appendIntensities([0])
+        XCTAssertEqual(visualization.circle.path?.boundingBox.width, visualization.centralRadius * 2)
         overlay.setMessage("Transcribing...")
-        let crossfade = try XCTUnwrap(view.captionSurface.layer?.animation(forKey: "transition") as? CATransition)
-        XCTAssertEqual(crossfade.type, .fade)
-        XCTAssertEqual(crossfade.duration, DesktopOverlayController.fadeDuration)
-        XCTAssertEqual(view.statusLabel.font?.pointSize, 36)
-        XCTAssertNotNil(view.visualization.circle.animation(forKey: "processingPulse"))
+        overlay.appendIntensities([1])
+        XCTAssertEqual(overlay.currentIntensity, 0)
+        XCTAssertEqual(visualization.circle.path?.boundingBox.width, visualization.centralRadius * 2)
+        XCTAssertNotNil(visualization.circle.animation(forKey: "processingPulse"))
         overlay.hide()
-        let exit = try XCTUnwrap(geometry.animation(forKey: "radiusScale") as? CABasicAnimation)
+        let exit = try XCTUnwrap(visualization.geometryLayer.animation(forKey: "radiusScale") as? CABasicAnimation)
         XCTAssertEqual(exit.duration, DesktopOverlayController.fadeDuration)
         XCTAssertEqual((exit.toValue as? NSNumber)?.doubleValue, 0)
-        overlay.show()
-        let reopened = try XCTUnwrap(geometry.animation(forKey: "radiusScale") as? CABasicAnimation)
-        XCTAssertEqual((reopened.toValue as? NSNumber)?.doubleValue, 1)
         overlay.hideImmediately()
-        XCTAssertNil(geometry.animation(forKey: "radiusScale"))
-        XCTAssertEqual((geometry.value(forKeyPath: "transform.scale") as? NSNumber)?.doubleValue, 0)
+        XCTAssertNil(visualization.geometryLayer.animation(forKey: "radiusScale"))
+        XCTAssertNil(visualization.circle.animation(forKey: "processingPulse"))
     }
 
     @MainActor
-    func testAudioHistoryMatchesAcrossScreensAndCollapsesDuringProcessing() throws {
+    func testBufferWarningMetricsAndVolumeAreInheritedAcrossScreensAndReset() throws {
         var frames = [NSRect(x: 0, y: 0, width: 800, height: 800)]
         let overlay = DesktopOverlayController(screenFrames: { frames })
         defer { overlay.stop() }
-        overlay.start()
-        overlay.setMessage("Listening... 3 seconds")
-        let values = (0..<32).map { Float($0 % 5) / 4 }
-        overlay.appendIntensities(values)
+        overlay.show()
+        overlay.setMessage("Listening... 625 seconds")
+        overlay.setBufferUsage(.init(byteCount: 19_999_999))
+        let original = try XCTUnwrap(overlay.panels.first?.contentView as? DesktopOverlayController.OverlayContentView)
+        XCTAssertFalse(original.visualization.isWarning)
+        overlay.setBufferUsage(.init(byteCount: 20_000_000))
+        overlay.appendIntensities([0.7])
         frames.append(NSRect(x: -800, y: 0, width: 800, height: 800))
         overlay.refreshScreens()
-        var radii: [[CGFloat]] = []
         for panel in overlay.panels {
             let view = try XCTUnwrap(panel.contentView as? DesktopOverlayController.OverlayContentView)
             view.layoutSubtreeIfNeeded()
-            let visualization = view.visualization
-            XCTAssertFalse(visualization.isHidden)
-            XCTAssertEqual(visualization.rings.count, 32)
-            var innerRadius = visualization.centralRadius
-            for (index, ring) in visualization.rings.enumerated() {
-                let displacedRadius = visualization.centralRadius + CGFloat(index + 1) * visualization.radiusStep
-                    + CGFloat(values[31 - index]) * visualization.maximumDisplacement * 2
-                let expectedRadius = max(displacedRadius, innerRadius + visualization.radiusStep * 0.15)
-                let bounds = try XCTUnwrap(ring.path).boundingBox
-                XCTAssertEqual(bounds.width / 2, expectedRadius, accuracy: 0.001)
-                XCTAssertEqual(bounds.midX, view.bounds.midX, accuracy: 0.001)
-                XCTAssertEqual(bounds.midY, view.bounds.midY, accuracy: 0.001)
-                XCTAssertNil(ring.strokeColor)
-                XCTAssertEqual(ring.fillRule, .evenOdd)
-                let fade = max(0, 1 - CGFloat(index) / 30)
-                let opacity = index.isMultiple(of: 2) ? CGFloat(AudioHistoryVisualizationView.centralOpacity) * fade : 0
-                XCTAssertEqual(try XCTUnwrap(ring.fillColor).alpha, opacity, accuracy: 0.001)
-                let color = try XCTUnwrap(NSColor(cgColor: try XCTUnwrap(ring.fillColor))?.usingColorSpace(.deviceRGB))
-                XCTAssertEqual(color.redComponent, 1)
-                XCTAssertEqual(color.greenComponent, 1)
-                XCTAssertEqual(color.blueComponent, 1)
-                let path = try XCTUnwrap(ring.path)
-                XCTAssertFalse(path.contains(CGPoint(x: bounds.midX, y: bounds.midY), using: .evenOdd))
-                let bandMidpoint = CGPoint(x: bounds.midX + (innerRadius + expectedRadius) / 2, y: bounds.midY)
-                XCTAssertTrue(path.contains(bandMidpoint, using: .evenOdd))
-                innerRadius = expectedRadius
-            }
-            XCTAssertEqual(visualization.circle.opacity, 0.45, accuracy: 0.001)
-            XCTAssertEqual(visualization.centralRadius, 180, accuracy: 0.001)
-            XCTAssertGreaterThan(visualization.radiusStep, 5.5)
-            XCTAssertTrue(visualization.geometryLayer.sublayers?.last === visualization.circle)
-            radii.append(visualization.rings.map { $0.path!.boundingBox.width / 2 })
+            XCTAssertTrue(view.visualization.isWarning)
+            XCTAssertEqual(view.visualization.circle.fillColor, NSColor.systemRed.cgColor)
+            XCTAssertEqual(view.visualization.intensity, 0.7)
+            XCTAssertEqual(view.counterLabel.stringValue, "625 seconds")
+            XCTAssertEqual(view.bufferLabel.stringValue, "83.3% buffer used")
+            XCTAssertEqual(view.bufferLabel.textColor, NSColor.white.withAlphaComponent(0.7))
+            XCTAssertEqual(view.remainingLabel.stringValue, "~125 seconds remaining")
+            XCTAssertFalse(view.bufferLabel.isHidden)
+            XCTAssertFalse(view.remainingLabel.isHidden)
+            XCTAssertLessThan(view.bufferLabel.frame.maxY, view.counterLabel.frame.minY)
+            XCTAssertLessThan(view.remainingLabel.frame.maxY, view.bufferLabel.frame.minY)
         }
-        XCTAssertEqual(radii[0], radii[1])
         overlay.setMessage("Transcribing...")
-        overlay.appendIntensities(Array(repeating: 1, count: 32)) // A late audio update must not reopen rings.
         for panel in overlay.panels {
             let view = try XCTUnwrap(panel.contentView as? DesktopOverlayController.OverlayContentView)
-            for ring in view.visualization.rings {
-                XCTAssertEqual(try XCTUnwrap(ring.path).boundingBox.width / 2, view.visualization.centralRadius, accuracy: 0.001)
-                XCTAssertEqual(ring.opacity, 0)
-                let animation = try XCTUnwrap(ring.animation(forKey: "path") as? CABasicAnimation)
-                XCTAssertEqual(animation.duration, AudioHistoryVisualizationView.collapseDuration)
-                XCTAssertNotNil(ring.animation(forKey: "opacity"))
-            }
-            XCTAssertNotNil(view.visualization.circle.animation(forKey: "processingPulse"))
-            XCTAssertFalse(view.visualization.isHidden)
+            XCTAssertTrue(view.bufferLabel.isHidden)
+            XCTAssertTrue(view.remainingLabel.isHidden)
+            XCTAssertTrue(view.visualization.isWarning)
         }
-        overlay.hideImmediately()
+        overlay.setBufferUsage(.empty)
+        overlay.setMessage("Listening... 0 seconds")
         for panel in overlay.panels {
             let view = try XCTUnwrap(panel.contentView as? DesktopOverlayController.OverlayContentView)
-            XCTAssertTrue(view.visualization.isHidden)
-            XCTAssertNil(view.visualization.circle.animation(forKey: "processingPulse"))
+            XCTAssertFalse(view.visualization.isWarning)
+            XCTAssertEqual(view.visualization.circle.fillColor, NSColor.white.cgColor)
+            XCTAssertEqual(view.bufferLabel.stringValue, "0.0% buffer used")
+            XCTAssertEqual(view.remainingLabel.stringValue, "~749 seconds remaining")
         }
     }
 
     @MainActor
-    func testHistoryImpulseMovesOutwardAndOlderCirclesAlwaysStayLarger() throws {
-        let overlay = DesktopOverlayController(screenFrames: { [NSRect(x: 0, y: 0, width: 800, height: 800)] })
+    func testVolumeIsClampedAndNewScreensUseLatestValue() throws {
+        var frames = [NSRect(x: 0, y: 0, width: 800, height: 800)]
+        let overlay = DesktopOverlayController(screenFrames: { frames })
         defer { overlay.stop() }
-        overlay.start()
+        overlay.show()
         overlay.setListening(true)
-        let view = try XCTUnwrap(overlay.panels.first?.contentView as? DesktopOverlayController.OverlayContentView)
-        view.layoutSubtreeIfNeeded()
-        let center = try XCTUnwrap(view.visualization.circle.path).boundingBox
-        overlay.appendIntensities([1])
-        for age in 0..<32 {
-            let expected = (0..<32).map { Float($0 == age ? 1 : 0) }
-            XCTAssertEqual(overlay.intensityHistory, expected)
-            var previousRadius = view.visualization.centralRadius
-            for (index, ring) in view.visualization.rings.enumerated() {
-                let radius = try XCTUnwrap(ring.path).boundingBox.width / 2
-                XCTAssertGreaterThan(radius, previousRadius)
-                let baseline = view.visualization.centralRadius + CGFloat(index + 1) * view.visualization.radiusStep
-                let displacedRadius = baseline + CGFloat(expected[index]) * view.visualization.maximumDisplacement * 2
-                XCTAssertEqual(radius, max(displacedRadius, previousRadius + view.visualization.radiusStep * 0.15), accuracy: 0.001)
-                previousRadius = radius
-            }
-            XCTAssertEqual(view.visualization.circle.path?.boundingBox, center)
-            overlay.appendIntensities([0])
+        for (input, expected): (Float, Float) in [(-1, 0), (2, 1), (.nan, 0), (.infinity, 0), (0.4, 0.4)] {
+            overlay.appendIntensities([input])
+            XCTAssertEqual(overlay.currentIntensity, expected)
         }
-        XCTAssertEqual(overlay.intensityHistory, Array(repeating: 0, count: 32))
-        overlay.appendIntensities([0.1, 0.2, 0.3])
-        XCTAssertEqual(Array(overlay.intensityHistory.prefix(3)), [0.3, 0.2, 0.1])
-        overlay.setMessage("Transcribing...")
-        overlay.appendIntensities([1])
-        XCTAssertEqual(overlay.intensityHistory, Array(repeating: 0, count: 32))
-        overlay.setListening(true)
-        XCTAssertEqual(overlay.intensityHistory, Array(repeating: 0, count: 32))
+        frames.append(NSRect(x: -800, y: 0, width: 800, height: 800))
+        overlay.refreshScreens()
+        for panel in overlay.panels {
+            let view = try XCTUnwrap(panel.contentView as? DesktopOverlayController.OverlayContentView)
+            XCTAssertEqual(view.visualization.intensity, 0.4)
+        }
     }
 
     @MainActor

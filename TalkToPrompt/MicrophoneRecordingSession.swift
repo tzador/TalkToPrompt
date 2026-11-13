@@ -8,11 +8,13 @@ final class MicrophoneRecordingSession: ObservableObject {
     @Published private(set) var isRecording = false
     @Published var errorMessage: String?
     private(set) var latestRecording: MicrophoneRecording?
+    private(set) var bufferUsage = RecordingBufferUsage.empty
 
     var onPermissionPrompt: (() -> Void)?
     var onFirstAudio: (() -> Void)?
     var onIntensities: (([Float]) -> Void)?
     var onFailure: (() -> Void)?
+    var onBufferUsage: ((RecordingBufferUsage) -> Void)?
 
     private let capture: MicrophoneCapturing
     private let checkAuthorization: () -> AVAuthorizationStatus
@@ -48,6 +50,7 @@ final class MicrophoneRecordingSession: ObservableObject {
         activeID = id
         latestID = id
         latestRecording = nil
+        bufferUsage = .empty
         finishTask = nil
         errorMessage = nil
         isRecording = false
@@ -82,6 +85,12 @@ final class MicrophoneRecordingSession: ObservableObject {
                     Task { @MainActor [weak self] in
                         guard let self, self.activeID == id else { return }
                         self.onIntensities?(values)
+                    }
+                }, onBufferUsage: { [weak self] usage in
+                    Task { @MainActor [weak self] in
+                        guard let self, self.activeID == id else { return }
+                        self.bufferUsage = usage
+                        self.onBufferUsage?(usage)
                     }
                 })
             } catch is CancellationError {

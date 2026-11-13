@@ -13,7 +13,8 @@ final class DesktopOverlayController: VoiceSessionOverlay {
     private var highlightTimer: Timer?
     private var highlightIndex = 0
     private var animatedStatus: String?
-    private(set) var intensityHistory = [Float](repeating: 0, count: AudioHistoryVisualizationView.historyCount)
+    private(set) var currentIntensity: Float = 0
+    private(set) var bufferUsage = RecordingBufferUsage.empty
     private(set) var panels: [OverlayPanel] = []
     private(set) var isVisible = false
     private(set) var isListening = false
@@ -88,7 +89,7 @@ final class DesktopOverlayController: VoiceSessionOverlay {
     func setMessage(_ message: String?) {
         self.message = message
         isListening = message?.hasPrefix("Listening...") == true
-        if !isListening { intensityHistory = Array(repeating: 0, count: AudioHistoryVisualizationView.historyCount) }
+        if !isListening { currentIntensity = 0 }
         let status = message.map { message in
             guard let separator = message.range(of: "... ") else { return message }
             return String(message[..<separator.lowerBound]) + "..."
@@ -122,13 +123,17 @@ final class DesktopOverlayController: VoiceSessionOverlay {
     }
 
     func appendIntensities(_ values: [Float]) {
-        guard isListening, !values.isEmpty else { return }
-        for value in values {
-            intensityHistory.insert(value.isFinite ? min(1, max(0, value)) : 0, at: 0)
-            intensityHistory.removeLast()
-        }
+        guard isListening, let value = values.last else { return }
+        currentIntensity = value.isFinite ? min(1, max(0, value)) : 0
         for panel in panels {
-            (panel.contentView as? OverlayContentView)?.visualization.updateHistory(intensityHistory)
+            (panel.contentView as? OverlayContentView)?.visualization.updateIntensity(currentIntensity)
+        }
+    }
+
+    func setBufferUsage(_ usage: RecordingBufferUsage) {
+        bufferUsage = usage
+        for panel in panels {
+            (panel.contentView as? OverlayContentView)?.setBufferUsage(usage)
         }
     }
 
@@ -158,7 +163,8 @@ final class DesktopOverlayController: VoiceSessionOverlay {
             let view = panel.contentView as? OverlayContentView
             view?.setMessage(message)
             view?.setHighlightedLetter(highlightIndex)
-            view?.visualization.updateHistory(intensityHistory, animated: false)
+            view?.visualization.updateIntensity(currentIntensity, animated: false)
+            view?.setBufferUsage(bufferUsage)
             return panel
         }
         if isVisible {
@@ -250,10 +256,13 @@ final class DesktopOverlayController: VoiceSessionOverlay {
 
     final class OverlayContentView: NSView {
         let backgroundTint = NSView()
-        let visualization = AudioHistoryVisualizationView(frame: .zero)
+        let visualization = AudioVisualizationView(frame: .zero)
         let captionSurface = NSView()
         let statusLabel = NSTextField(labelWithString: "")
         let counterLabel = NSTextField(labelWithString: "")
+        let bufferLabel = NSTextField(labelWithString: "")
+        let remainingLabel = NSTextField(labelWithString: "")
+        private var bufferUsage = RecordingBufferUsage.empty
         private var animatesLetters = false
         private var highlightIndex = 0
 
@@ -294,6 +303,20 @@ final class DesktopOverlayController: VoiceSessionOverlay {
             counterLabel.translatesAutoresizingMaskIntoConstraints = false
             counterLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             captionSurface.addSubview(counterLabel)
+            for label in [bufferLabel, remainingLabel] {
+                label.font = .monospacedDigitSystemFont(ofSize: 16, weight: .regular)
+                label.textColor = NSColor.white.withAlphaComponent(0.7)
+                label.alignment = .center
+                label.isHidden = true
+                label.translatesAutoresizingMaskIntoConstraints = false
+                label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+                captionSurface.addSubview(label)
+                NSLayoutConstraint.activate([
+                    label.centerXAnchor.constraint(equalTo: centerXAnchor),
+                    label.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 16),
+                    label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -16)
+                ])
+            }
             NSLayoutConstraint.activate([
                 statusLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
                 statusLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -302,7 +325,9 @@ final class DesktopOverlayController: VoiceSessionOverlay {
                 counterLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
                 counterLabel.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 10),
                 counterLabel.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 16),
-                counterLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -16)
+                counterLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -16),
+                bufferLabel.topAnchor.constraint(equalTo: counterLabel.bottomAnchor, constant: 8),
+                remainingLabel.topAnchor.constraint(equalTo: bufferLabel.bottomAnchor, constant: 6)
             ])
         }
 
@@ -332,7 +357,20 @@ final class DesktopOverlayController: VoiceSessionOverlay {
                 processing: statusLabel.stringValue == "Transcribing",
                 visible: animatesLetters
             )
+            setBufferUsage(bufferUsage)
             setHighlightedLetter(highlightIndex)
+        }
+
+        func setBufferUsage(_ usage: RecordingBufferUsage) {
+            bufferUsage = usage
+            // Keep the warning color through transcription, until the next session resets it.
+            visualization.setWarning(usage.isWarning)
+            bufferLabel.stringValue = String(format: "%.1f%% buffer used", usage.fraction * 100)
+            remainingLabel.stringValue = "~\(usage.remainingSeconds) seconds remaining"
+            let listening = statusLabel.stringValue == "Listening"
+            bufferLabel.isHidden = !listening
+            remainingLabel.isHidden = !listening
+            bufferLabel.textColor = .white.withAlphaComponent(0.7)
         }
 
         func setHighlightedLetter(_ count: Int) {

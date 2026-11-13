@@ -48,7 +48,7 @@
 
 /* Begin PBXFileReference section */
         920000000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionLanguage.swift; sourceTree = "<group>"; };
-        910000000000000000000011 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioHistoryVisualizationView.swift; sourceTree = "<group>"; };
+        910000000000000000000011 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioVisualizationView.swift; sourceTree = "<group>"; };
         910000000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioIntensityAnalyzer.swift; sourceTree = "<group>"; };
         900000000000000000000031 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingTests.swift; sourceTree = "<group>"; };
         900000000000000000000021 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
