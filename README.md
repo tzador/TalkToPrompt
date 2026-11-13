@@ -26,4 +26,4 @@ The overlay shows elapsed recording time as `MM:SS` below “Listening”. Its s
 
 Status captions use the system font, with gray text and a smoothly fading black letter highlight. The elapsed timer is monospaced and black. The desktop dims outside the circle, which has 90% opacity and a native background blur clipped to its shape. During transcription, the circle gently expands and contracts, then collapses to zero when the overlay closes.
 
-Use the menu bar icon to change your API key, choose a language hint, or enable **Launch at Login**. A filled status indicator means ready; an outline means setup needs attention. The menu uses a monochrome palette with a red accent for Quit.
+Use the menu bar icon to change your API key, choose a language hint, or enable **Launch at Login**. A filled status indicator means ready; an outline means setup needs attention. The menu uses a monochrome palette with a green/red readiness badge and a red accent for Quit.

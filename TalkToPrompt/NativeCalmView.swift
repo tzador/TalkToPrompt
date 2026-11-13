@@ -39,7 +39,7 @@ struct NativeCalmView: View {
 
     private var ink: Color { colorScheme == .dark ? .white : .black }
     private var paper: Color { colorScheme == .dark ? Color(white: 0.075) : .white }
-    private var mutedInk: Color { ink.opacity(0.48) }
+    private var mutedInk: Color { ink.opacity(0.62) }
     private var ready: Bool { state.isReady && !state.needsSetup }
 
     var body: some View {
@@ -48,7 +48,7 @@ struct NativeCalmView: View {
             shortcutGuide.padding(.top, 18)
 
             Text("PREFERENCES")
-                .font(.system(size: 10, weight: .semibold)).tracking(1.3)
+                .font(.system(size: 12, weight: .semibold)).tracking(1.3)
                 .foregroundStyle(mutedInk)
                 .padding(.top, 20).padding(.bottom, 9)
 
@@ -63,24 +63,24 @@ struct NativeCalmView: View {
             .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(ink.opacity(0.08)))
 
             if let error = state.loginError {
-                Text(error).font(.system(size: 11)).foregroundStyle(ink.opacity(0.7))
+                Text(error).font(.system(size: 13)).foregroundStyle(ink.opacity(0.7))
                     .fixedSize(horizontal: false, vertical: true).padding(.top, 8)
             }
 
             HStack(spacing: 5) {
-                Image(systemName: "lock.shield").font(.system(size: 10))
+                Image(systemName: "lock.shield").font(.system(size: 12))
                 Text("Audio goes directly to OpenAI")
-                    .font(.system(size: 10))
+                    .font(.system(size: 12))
                 Spacer(minLength: 8)
                 Button(action: actions.quit) {
                     HStack(spacing: 5) {
                         Text("Quit")
-                        Image(systemName: "power").font(.system(size: 10, weight: .medium))
+                        Image(systemName: "power").font(.system(size: 13, weight: .medium))
                     }
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(colorScheme == .dark ? Color(red: 1, green: 0.45, blue: 0.45) : Color(red: 0.72, green: 0.19, blue: 0.19))
-                    .padding(.horizontal, 9).padding(.vertical, 6)
-                    .background(Color.red.opacity(0.055), in: RoundedRectangle(cornerRadius: 6))
+                    .padding(.horizontal, 11).padding(.vertical, 8)
+                    .background(Color.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 6))
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -91,7 +91,7 @@ struct NativeCalmView: View {
             .padding(.top, 14)
         }
         .padding(20)
-        .frame(width: 380)
+        .frame(width: 420)
         .fixedSize(horizontal: false, vertical: true)
         .background(paper)
         .foregroundStyle(ink)
@@ -112,11 +112,11 @@ struct NativeCalmView: View {
                         .foregroundStyle(paper)
                 }
             }
-            .frame(width: 40, height: 40).accessibilityHidden(true)
+            .frame(width: 44, height: 44).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
-                Text("TalkToPrompt").font(.system(size: 17, weight: .semibold))
+                Text("TalkToPrompt").font(.system(size: 20, weight: .semibold))
                 Text("Voice, wherever you write.")
-                    .font(.system(size: 11)).foregroundStyle(mutedInk)
+                    .font(.system(size: 13)).foregroundStyle(mutedInk)
             }
             Spacer(minLength: 4)
             if ready {
@@ -128,39 +128,46 @@ struct NativeCalmView: View {
                     .help("Finish setup to start dictating")
             }
         }
-        .frame(height: 40)
+        .frame(height: 44)
+    }
+
+    private var statusInk: Color {
+        if ready {
+            return colorScheme == .dark ? NativeCalmPalette.green : Color(red: 0.08, green: 0.43, blue: 0.20)
+        }
+        return colorScheme == .dark ? NativeCalmPalette.red : Color(red: 0.70, green: 0.15, blue: 0.18)
     }
 
     private var readinessBadge: some View {
-        HStack(spacing: 4) {
-            Image(systemName: ready ? "checkmark.circle.fill" : "circle.dashed")
-                .font(.system(size: 10, weight: .medium))
-            Text(ready ? "Ready" : "Set up")
-                .font(.system(size: 10, weight: .semibold))
+        HStack(spacing: 5) {
+            Image(systemName: ready ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                .font(.system(size: 12, weight: .medium))
+            Text(ready ? "Ready" : "Not ready")
+                .font(.system(size: 13, weight: .semibold))
         }
-        .foregroundStyle(ink.opacity(ready ? 0.85 : 0.6))
-        .padding(.horizontal, 8).padding(.vertical, 6)
-        .background(ink.opacity(0.055), in: Capsule())
+        .foregroundStyle(statusInk)
+        .padding(.horizontal, 10).padding(.vertical, 8)
+        .background(statusInk.opacity(0.12), in: Capsule())
+        .overlay(Capsule().strokeBorder(statusInk.opacity(0.18)))
     }
 
     private var shortcutGuide: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Hold to speak").font(.system(size: 13, weight: .medium))
-                Spacer(minLength: 6)
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Press Shift to speak")
+                .font(.system(size: 19, weight: .semibold))
+            Text("Release to transcribe and insert.\nEscape to cancel.")
+                .font(.system(size: 14)).lineSpacing(4).foregroundStyle(mutedInk)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 12) {
                 shiftKey("Left ⇧")
-                Text("+").font(.system(size: 10)).foregroundStyle(mutedInk)
+                Text("+").font(.system(size: 17, weight: .medium)).foregroundStyle(mutedInk)
                 shiftKey("Right ⇧")
             }
-            HStack(spacing: 0) {
-                Text("Release to insert")
-                Text("  ·  ")
-                Text("Esc").font(.system(size: 10, weight: .medium, design: .monospaced))
-                Text(" to cancel")
-            }
-            .font(.system(size: 11)).foregroundStyle(mutedInk)
+            .padding(.top, 2)
+            .accessibilityLabel("Hold both the left and right Shift keys to speak")
         }
-        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
         .background(ink.opacity(0.045), in: RoundedRectangle(cornerRadius: 12))
     }
 
@@ -174,14 +181,14 @@ struct NativeCalmView: View {
                 .buttonStyle(MenuActionStyle(ink: ink, paper: paper))
             if state.hasAPIKey {
                 Button(action: actions.clearAPIKey) {
-                    Image(systemName: "xmark").font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(mutedInk).frame(width: 18, height: 26).contentShape(Rectangle())
+                    Image(systemName: "xmark").font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(mutedInk).frame(width: 24, height: 32).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Clear API Key").help("Clear the saved API key")
             }
         }
-        .padding(.horizontal, 12).frame(height: 58)
+        .padding(.horizontal, 12).frame(height: 66)
     }
 
     private var loginRow: some View {
@@ -192,7 +199,7 @@ struct NativeCalmView: View {
             Spacer(minLength: 4)
             if state.loginNeedsApproval {
                 Button(action: actions.loginSettings) {
-                    Image(systemName: "gearshape").font(.system(size: 12))
+                    Image(systemName: "gearshape").font(.system(size: 15))
                 }
                 .buttonStyle(.plain).foregroundStyle(mutedInk)
                 .accessibilityLabel("Open System Settings → Login Items")
@@ -204,7 +211,7 @@ struct NativeCalmView: View {
             .toggleStyle(MonochromeSwitchStyle(ink: ink, paper: paper))
             .help("Start TalkToPrompt when you sign in to your Mac, including after a restart")
         }
-        .padding(.horizontal, 12).frame(height: 58)
+        .padding(.horizontal, 12).frame(height: 66)
     }
 
     private var languageRow: some View {
@@ -221,11 +228,11 @@ struct NativeCalmView: View {
                     Text(language.name).tag(language.code)
                 }
             }
-            .labelsHidden().pickerStyle(.menu).frame(width: 124)
-            .controlSize(.small)
+            .labelsHidden().pickerStyle(.menu).frame(width: 136)
+            .font(.system(size: 14)).controlSize(.regular)
             .help("Suggest the input language, or choose Auto-detect. Your speech stays in its original language.")
         }
-        .padding(.horizontal, 12).frame(height: 58)
+        .padding(.horizontal, 12).frame(height: 66)
     }
 
     private var rowDivider: some View {
@@ -234,20 +241,21 @@ struct NativeCalmView: View {
 
     private func rowTitle(_ title: String, detail: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(title).font(.system(size: 12, weight: .medium)).lineLimit(1)
-            Text(detail).font(.system(size: 10)).foregroundStyle(mutedInk).lineLimit(1)
+            Text(title).font(.system(size: 14, weight: .medium)).lineLimit(1)
+            Text(detail).font(.system(size: 12)).foregroundStyle(mutedInk).lineLimit(1)
         }
     }
 
     private func shiftKey(_ title: String) -> some View {
-        Text(title).font(.system(size: 11, weight: .medium, design: .monospaced))
-            .padding(.horizontal, 7).padding(.vertical, 5)
-            .background(paper, in: RoundedRectangle(cornerRadius: 5))
-            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(ink.opacity(0.10)))
+        Text(title).font(.system(size: 21, weight: .semibold, design: .monospaced))
+            .foregroundStyle(paper)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(ink, in: RoundedRectangle(cornerRadius: 9))
     }
 
     private func rowIcon(_ name: String) -> some View {
-        Image(systemName: name).font(.system(size: 14, weight: .regular))
+        Image(systemName: name).font(.system(size: 17, weight: .regular))
             .foregroundStyle(ink.opacity(0.55))
             .frame(width: 24, height: 24).accessibilityHidden(true)
     }
@@ -258,11 +266,10 @@ private struct MenuActionStyle: ButtonStyle {
     let paper: Color
 
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label.font(.system(size: 10, weight: .medium))
-            .foregroundStyle(ink.opacity(configuration.isPressed ? 0.6 : 0.85))
+        configuration.label.font(.system(size: 12, weight: .medium))
+            .foregroundStyle(paper)
             .padding(.horizontal, 9).padding(.vertical, 6)
-            .background(paper, in: RoundedRectangle(cornerRadius: 6))
-            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(ink.opacity(0.14)))
+            .background(ink.opacity(configuration.isPressed ? 0.7 : 1), in: RoundedRectangle(cornerRadius: 6))
             .contentShape(Rectangle())
     }
 }
@@ -276,9 +283,9 @@ private struct MonochromeSwitchStyle: ToggleStyle {
             Capsule().fill(configuration.isOn ? ink : ink.opacity(0.13))
                 .overlay(alignment: configuration.isOn ? .trailing : .leading) {
                     Circle().fill(configuration.isOn ? paper : ink.opacity(0.45))
-                        .frame(width: 14, height: 14).padding(3)
+                        .frame(width: 18, height: 18).padding(3)
                 }
-                .frame(width: 34, height: 20)
+                .frame(width: 42, height: 24)
         }
         .buttonStyle(.plain)
         .animation(.easeInOut(duration: 0.16), value: configuration.isOn)

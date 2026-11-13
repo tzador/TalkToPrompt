@@ -45,9 +45,9 @@ final class NativeCalmViewTests: XCTestCase {
                 let (window, host) = host(state, scheme: scheme)
                 defer { window.close() }
                 let size = host.fittingSize
-                XCTAssertEqual(size.width, 380, accuracy: 0.5)
-                XCTAssertLessThan(size.height, 460)
-                XCTAssertGreaterThan(size.height, 180)
+                XCTAssertEqual(size.width, 420, accuracy: 0.5)
+                XCTAssertLessThan(size.height, 680)
+                XCTAssertGreaterThan(size.height, 450)
                 XCTAssertEqual(host.bounds.height, size.height, accuracy: 0.5)
                 sizes.append(size)
             }
@@ -72,14 +72,17 @@ final class NativeCalmViewTests: XCTestCase {
                 defer { window.close() }
                 let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
                 host.cacheDisplay(in: host.bounds, to: bitmap)
-                // Status and controls stay neutral in both appearances; Quit is the only color accent.
+                // Only readiness (green/red) and Quit (red) add color to the neutral menu.
                 for y in stride(from: 0, to: bitmap.pixelsHigh, by: 4) {
                     for x in stride(from: 0, to: bitmap.pixelsWide, by: 4) {
                         let color = try XCTUnwrap(bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB))
                         let channels = [color.redComponent, color.greenComponent, color.blueComponent]
                         if channels.max()! - channels.min()! > 0.04 {
-                            XCTAssertGreaterThan(color.redComponent, color.greenComponent)
-                            XCTAssertEqual(color.greenComponent, color.blueComponent, accuracy: 0.04)
+                            if isReady && color.greenComponent > color.redComponent {
+                                XCTAssertGreaterThan(color.greenComponent, color.blueComponent)
+                            } else {
+                                XCTAssertGreaterThan(color.redComponent, color.greenComponent)
+                            }
                         }
                     }
                 }
