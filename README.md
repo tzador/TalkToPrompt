@@ -22,7 +22,7 @@ Follow the setup wizard to grant permissions and enter your API key. OpenAI API 
 
 Press **Escape** at any time to cancel recording or transcription. The overlay fades and collapses as it closes.
 
-The overlay shows elapsed recording time as `MM:SS` above “Listening”. Its single circle responds to your current volume and turns red after five minutes or at 20 MB, whichever comes first. Recording automatically stops and transcribes after six minutes or at 24 MB. Audio stays in memory as 16 kHz, 16-bit mono PCM and is uploaded as WAV.
+The overlay shows elapsed recording time as `MM:SS` below “Listening”. Its single circle responds to your current volume and turns red after five minutes or at 20 MB, whichever comes first. Recording automatically stops and transcribes after six minutes or at 24 MB. Audio stays in memory as 16 kHz, 16-bit mono PCM and is uploaded as WAV.
 
 Status captions use the system font, with gray text and a smoothly fading black letter highlight. The elapsed timer is monospaced and black. The desktop dims outside the circle, which has 90% opacity and a native background blur clipped to its shape. During transcription, the circle gently expands and contracts, then collapses to zero when the overlay closes.
 

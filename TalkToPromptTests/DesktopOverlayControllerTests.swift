@@ -37,7 +37,7 @@ final class DesktopOverlayControllerTests: XCTestCase {
             view.setMessage("Listening... \(seconds) seconds")
             view.layoutSubtreeIfNeeded()
             XCTAssertEqual(view.counterLabel.stringValue, expected)
-            XCTAssertGreaterThan(view.counterLabel.frame.minY, view.statusLabel.frame.maxY)
+            XCTAssertLessThan(view.counterLabel.frame.maxY, view.statusLabel.frame.minY)
             XCTAssertTrue(try XCTUnwrap(view.counterLabel.font).isFixedPitch)
             XCTAssertFalse(try XCTUnwrap(view.statusLabel.font).isFixedPitch)
         }
@@ -172,7 +172,7 @@ final class DesktopOverlayControllerTests: XCTestCase {
             XCTAssertEqual(labels.count, 2)
             XCTAssertFalse(labels.contains { $0.stringValue.contains("%") || $0.stringValue.contains("remaining") })
             XCTAssertEqual(view.visualization.circle.opacity, 0.9)
-            XCTAssertGreaterThan(view.counterLabel.frame.minY, view.statusLabel.frame.maxY)
+            XCTAssertLessThan(view.counterLabel.frame.maxY, view.statusLabel.frame.minY)
         }
         overlay.setMessage("Transcribing...")
         for panel in overlay.panels {
@@ -265,7 +265,7 @@ final class DesktopOverlayControllerTests: XCTestCase {
             let font = try XCTUnwrap(view.counterLabel.font)
             XCTAssertFalse(NSFontManager.shared.traits(of: font).contains(.boldFontMask))
             view.layoutSubtreeIfNeeded()
-            XCTAssertGreaterThan(view.counterLabel.frame.minY, view.statusLabel.frame.maxY)
+            XCTAssertLessThan(view.counterLabel.frame.maxY, view.statusLabel.frame.minY)
             XCTAssertFalse(view.statusLabel.isHidden)
         }
     }

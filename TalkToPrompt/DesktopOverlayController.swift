@@ -314,7 +314,7 @@ final class DesktopOverlayController: VoiceSessionOverlay {
                 statusLabel.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 16),
                 statusLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -16),
                 counterLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
-                counterLabel.bottomAnchor.constraint(equalTo: statusLabel.topAnchor, constant: -10),
+                counterLabel.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 10),
                 counterLabel.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 16),
                 counterLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -16)
             ])
