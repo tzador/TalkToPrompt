@@ -9,7 +9,7 @@ enum MenuBarIcon {
         return image
     }
 
-    /// A filled badge means ready; an outline indicates setup is needed.
+    /// A green dot means ready; a red dot indicates setup is needed.
     final class ReadinessIndicator: NSView {
         var state: State = .missingRequirements {
             didSet { needsDisplay = true }
@@ -19,12 +19,8 @@ enum MenuBarIcon {
 
         override func draw(_ dirtyRect: NSRect) {
             let circle = NSBezierPath(ovalIn: bounds.insetBy(dx: 1, dy: 1))
-            NSColor.labelColor.set()
-            if state == .ready { circle.fill() }
-            else {
-                circle.lineWidth = 1.2
-                circle.stroke()
-            }
+            state.color.setFill()
+            circle.fill()
         }
     }
 
@@ -33,6 +29,13 @@ enum MenuBarIcon {
 
         static func permissions(inputMonitoring: Bool, accessibility: Bool, microphone: Bool, apiKey: Bool) -> State {
             inputMonitoring && accessibility && microphone && apiKey ? .ready : .missingRequirements
+        }
+
+        var color: NSColor {
+            switch self {
+            case .ready: return NSColor(srgbRed: 53 / 255, green: 199 / 255, blue: 89 / 255, alpha: 1)
+            case .missingRequirements: return NSColor(srgbRed: 1, green: 92 / 255, blue: 96 / 255, alpha: 1)
+            }
         }
 
     }

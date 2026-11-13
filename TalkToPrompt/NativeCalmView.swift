@@ -114,8 +114,8 @@ struct NativeCalmView: View {
             }
             .frame(width: 44, height: 44).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
-                Text("TalkToPrompt").font(.system(size: 20, weight: .semibold))
-                Text("Voice, wherever you write.")
+                Text("Talk to Prompt").font(.system(size: 20, weight: .semibold))
+                Text("Dictate into any app")
                     .font(.system(size: 13)).foregroundStyle(mutedInk)
             }
             Spacer(minLength: 4)
@@ -153,7 +153,7 @@ struct NativeCalmView: View {
 
     private var shortcutGuide: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Press Shift to speak")
+            Text("Press Shifts to speak")
                 .font(.system(size: 19, weight: .semibold))
             Text("Release to transcribe and insert.\nEscape to cancel.")
                 .font(.system(size: 14)).lineSpacing(4).foregroundStyle(mutedInk)
@@ -248,10 +248,11 @@ struct NativeCalmView: View {
 
     private func shiftKey(_ title: String) -> some View {
         Text(title).font(.system(size: 21, weight: .semibold, design: .monospaced))
-            .foregroundStyle(paper)
+            .foregroundStyle(ink.opacity(0.8))
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
-            .background(ink, in: RoundedRectangle(cornerRadius: 9))
+            .background(ink.opacity(0.10), in: RoundedRectangle(cornerRadius: 9))
+            .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(ink.opacity(0.13)))
     }
 
     private func rowIcon(_ name: String) -> some View {

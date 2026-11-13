@@ -4,6 +4,30 @@ import XCTest
 
 final class MenuBarIconTests: XCTestCase {
     @MainActor
+    func testReadinessIndicatorDrawsSolidGreenOrRedDot() throws {
+        let indicator = MenuBarIcon.ReadinessIndicator(frame: NSRect(x: 0, y: 0, width: 8, height: 8))
+        for state in [MenuBarIcon.State.ready, .missingRequirements] {
+            let bitmap = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 8, pixelsHigh: 8,
+                bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
+            indicator.state = state
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+            indicator.draw(indicator.bounds)
+            NSGraphicsContext.restoreGraphicsState()
+            let color = try XCTUnwrap(bitmap.colorAt(x: 4, y: 4))
+            XCTAssertGreaterThan(color.alphaComponent, 0.95)
+            if state == .ready {
+                XCTAssertGreaterThan(color.greenComponent, color.redComponent)
+                XCTAssertGreaterThan(color.greenComponent, color.blueComponent)
+            } else {
+                XCTAssertGreaterThan(color.redComponent, color.greenComponent)
+                XCTAssertGreaterThan(color.redComponent, color.blueComponent)
+            }
+        }
+    }
+
+    @MainActor
     func testAllRequirementsAreNeededForReadyIndicator() {
         for bits in 0..<16 {
             let state = MenuBarIcon.State.permissions(
