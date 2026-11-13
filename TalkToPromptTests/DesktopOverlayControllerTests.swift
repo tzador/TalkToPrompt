@@ -18,7 +18,7 @@ final class DesktopOverlayControllerTests: XCTestCase {
         }
         view.setMessage("Transcribing...")
         XCTAssertTrue(view.counterLabel.isHidden)
-        XCTAssertEqual(view.visualization.circle.opacity, 1)
+        XCTAssertEqual(view.visualization.circle.opacity, 0.9)
     }
 
     @MainActor
@@ -138,7 +138,7 @@ final class DesktopOverlayControllerTests: XCTestCase {
             let labels = view.captionSurface.subviews.compactMap { $0 as? NSTextField }
             XCTAssertEqual(labels.count, 2)
             XCTAssertFalse(labels.contains { $0.stringValue.contains("%") || $0.stringValue.contains("remaining") })
-            XCTAssertEqual(view.visualization.circle.opacity, 1)
+            XCTAssertEqual(view.visualization.circle.opacity, 0.9)
             XCTAssertGreaterThan(view.counterLabel.frame.minY, view.statusLabel.frame.maxY)
         }
         overlay.setMessage("Transcribing...")

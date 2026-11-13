@@ -4,7 +4,7 @@ import QuartzCore
 /// Circle and dimmer share radius animations so their translucent fills never overlap.
 @MainActor
 final class AudioVisualizationView: NSView {
-    static let centralOpacity: Float = 1
+    static let centralOpacity: Float = 0.9
     static let volumeAnimationDuration: TimeInterval = 0.12
     static let dimmingOpacity: CGFloat = 0.40
     static let intensityGain: CGFloat = 0.8
