@@ -9,7 +9,7 @@ enum MenuBarIcon {
         return image
     }
 
-    /// Separate from the template image so only the small badge retains color.
+    /// A filled badge means ready; an outline indicates setup is needed.
     final class ReadinessIndicator: NSView {
         var state: State = .missingRequirements {
             didSet { needsDisplay = true }
@@ -18,9 +18,13 @@ enum MenuBarIcon {
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
         override func draw(_ dirtyRect: NSRect) {
-            let circle = NSBezierPath(ovalIn: bounds)
-            state.color.setFill()
-            circle.fill()
+            let circle = NSBezierPath(ovalIn: bounds.insetBy(dx: 1, dy: 1))
+            NSColor.labelColor.set()
+            if state == .ready { circle.fill() }
+            else {
+                circle.lineWidth = 1.2
+                circle.stroke()
+            }
         }
     }
 
@@ -31,12 +35,6 @@ enum MenuBarIcon {
             inputMonitoring && accessibility && microphone && apiKey ? .ready : .missingRequirements
         }
 
-        var color: NSColor {
-            switch self {
-            case .ready: return NSColor(srgbRed: 53 / 255, green: 199 / 255, blue: 89 / 255, alpha: 1)
-            case .missingRequirements: return NSColor(srgbRed: 1, green: 92 / 255, blue: 96 / 255, alpha: 1)
-            }
-        }
     }
 
     static func image(color: NSColor, height: CGFloat = 18, bundle: Bundle = .main) -> NSImage? {

@@ -4,7 +4,7 @@ import XCTest
 
 final class MenuBarIconTests: XCTestCase {
     @MainActor
-    func testAllRequirementsAreNeededForGreenIndicator() {
+    func testAllRequirementsAreNeededForReadyIndicator() {
         for bits in 0..<16 {
             let state = MenuBarIcon.State.permissions(
                 inputMonitoring: bits & 1 != 0, accessibility: bits & 2 != 0,

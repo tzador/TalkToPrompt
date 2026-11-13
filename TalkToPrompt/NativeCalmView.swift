@@ -37,152 +37,253 @@ struct NativeCalmView: View {
     let actions: Actions
     @Environment(\.colorScheme) private var colorScheme
 
+    private var ink: Color { colorScheme == .dark ? .white : .black }
+    private var paper: Color { colorScheme == .dark ? Color(white: 0.075) : .white }
+    private var mutedInk: Color { ink.opacity(0.48) }
+    private var ready: Bool { state.isReady && !state.needsSetup }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .center, spacing: 10) {
-                if let image = MenuBarIcon.statusImage() {
-                    Image(nsImage: image).resizable().scaledToFit()
-                        .frame(width: 24, height: 24).accessibilityHidden(true)
-                }
-                Text("TalkToPrompt").font(.system(size: 19, weight: .semibold))
-                Spacer(minLength: 4)
-                if state.isReady && !state.needsSetup {
-                    readinessBadge(ready: true)
-                } else {
-                    Button(action: actions.setup) { readinessBadge(ready: false) }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Not ready. Finish setup")
-                        .help("Finish setup to start dictating")
-                }
+        VStack(alignment: .leading, spacing: 0) {
+            header
+            shortcutGuide.padding(.top, 18)
+
+            Text("PREFERENCES")
+                .font(.system(size: 10, weight: .semibold)).tracking(1.3)
+                .foregroundStyle(mutedInk)
+                .padding(.top, 20).padding(.bottom, 9)
+
+            VStack(spacing: 0) {
+                apiKeyRow
+                rowDivider
+                loginRow
+                rowDivider
+                languageRow
             }
-            HStack(spacing: 10) {
-                rowIcon("key")
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("OpenAI API key").font(.callout.weight(.medium))
-                    Text(state.apiKeyUnavailable ? "Unable to read key" : state.apiKeyStatus)
-                        .font(.caption).foregroundStyle(state.apiKeyUnavailable || !state.hasAPIKey ? errorInk : .secondary)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 4)
-                Button(state.hasAPIKey ? "Change" : "Enter", action: actions.apiKey)
-                    .accessibilityLabel(state.hasAPIKey ? "Change API Key" : "Enter API Key")
-                if state.hasAPIKey {
-                    Button(action: actions.clearAPIKey) { Image(systemName: "xmark.circle") }
-                        .buttonStyle(.plain).foregroundStyle(.secondary)
-                        .accessibilityLabel("Clear API Key").help("Clear the saved API key")
-                }
-            }
-            .frame(height: 44)
-            HStack(spacing: 10) {
-                rowIcon("power")
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Launch at Login").font(.callout.weight(.medium))
-                    if state.loginNeedsApproval || state.loginStatus == "Unavailable" {
-                        Text(state.loginStatus).font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                Spacer(minLength: 4)
-                if state.loginNeedsApproval {
-                    Button(action: actions.loginSettings) { Image(systemName: "gearshape") }
-                        .accessibilityLabel("Open System Settings → Login Items")
-                        .help("Approve TalkToPrompt in Login Items")
-                }
-                Toggle("Launch at Login", isOn: Binding(
-                    get: { state.loginRequested }, set: { actions.setLogin($0) }
-                ))
-                .toggleStyle(.switch).labelsHidden().tint(NativeCalmPalette.green)
-                .accessibilityLabel("Launch at Login")
-                .help("Start TalkToPrompt when you sign in to your Mac, including after a restart")
-            }
-            .frame(height: 44)
+            .background(ink.opacity(0.025), in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(ink.opacity(0.08)))
+
             if let error = state.loginError {
-                Text(error).font(.caption).foregroundStyle(errorInk)
-                    .fixedSize(horizontal: false, vertical: true)
+                Text(error).font(.system(size: 11)).foregroundStyle(ink.opacity(0.7))
+                    .fixedSize(horizontal: false, vertical: true).padding(.top, 8)
             }
-            HStack(spacing: 10) {
-                rowIcon("globe")
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Language hint").font(.callout.weight(.medium))
-                    Text("Language you’ll speak").font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 4)
-                Picker("Language hint", selection: Binding(
-                    get: { state.transcriptionLanguage }, set: actions.setTranscriptionLanguage
-                )) {
-                    Text("Auto-detect").tag("")
-                    Divider()
-                    ForEach(TranscriptionLanguage.all) { language in
-                        Text(language.name).tag(language.code)
+
+            HStack(spacing: 5) {
+                Image(systemName: "lock.shield").font(.system(size: 10))
+                Text("Audio goes directly to OpenAI")
+                    .font(.system(size: 10))
+                Spacer(minLength: 8)
+                Button(action: actions.quit) {
+                    HStack(spacing: 5) {
+                        Text("Quit")
+                        Image(systemName: "power").font(.system(size: 10, weight: .medium))
                     }
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(colorScheme == .dark ? Color(red: 1, green: 0.45, blue: 0.45) : Color(red: 0.72, green: 0.19, blue: 0.19))
+                    .padding(.horizontal, 9).padding(.vertical, 6)
+                    .background(Color.red.opacity(0.055), in: RoundedRectangle(cornerRadius: 6))
+                    .contentShape(Rectangle())
                 }
-                .labelsHidden().pickerStyle(.menu).frame(maxWidth: 156)
-                .help("Suggest the input language, or choose Auto-detect. Your speech stays in its original language.")
+                .buttonStyle(.plain)
+                .keyboardShortcut("q", modifiers: .command)
+                .accessibilityLabel("Quit TalkToPrompt")
             }
-            .frame(height: 44)
-            HStack(spacing: 10) {
-                rowIcon("lock")
-                Text("Audio goes directly to OpenAI.").font(.callout)
-                Spacer(minLength: 0)
-                Button("Quit", action: actions.quit)
-                    .foregroundStyle(errorInk)
-                    .keyboardShortcut("q", modifiers: .command)
-                    .accessibilityLabel("Quit TalkToPrompt")
-            }
-            .foregroundStyle(.secondary)
-            Divider()
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Hold both Shift keys to dictate")
-                    .font(.system(size: 16, weight: .semibold))
-                HStack(spacing: 7) {
-                    shiftKey("Left ⇧")
-                    Text("+").font(.headline).foregroundStyle(.secondary)
-                    shiftKey("Right ⇧")
-                    Spacer(minLength: 0)
-                }
-                Text("Speak, then release to insert your words.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+            .foregroundStyle(mutedInk)
+            .padding(.top, 14)
         }
-        .buttonStyle(.bordered)
-        .padding(16)
+        .padding(20)
         .frame(width: 380)
         .fixedSize(horizontal: false, vertical: true)
-        .background(Color(nsColor: .windowBackgroundColor))
-        .foregroundStyle(.primary)
+        .background(paper)
+        .foregroundStyle(ink)
+        .tint(ink)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("TalkToPrompt")
     }
 
-    private func readinessBadge(ready: Bool) -> some View {
-        let ink = ready
-            ? (colorScheme == .dark ? NativeCalmPalette.green : Color(.sRGB, red: 0.08, green: 0.44, blue: 0.17))
-            : errorInk
-        return HStack(spacing: 6) {
-            Circle().fill(ink).frame(width: 10, height: 10).accessibilityHidden(true)
-            Text(ready ? "Ready" : "Not ready").font(.system(size: 14, weight: .bold))
+    private var header: some View {
+        HStack(spacing: 11) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 11).fill(ink)
+                if let image = MenuBarIcon.statusImage() {
+                    Image(nsImage: image).renderingMode(.template).resizable().scaledToFit()
+                        .foregroundStyle(paper).padding(8)
+                } else {
+                    Image(systemName: "waveform").font(.system(size: 21, weight: .medium))
+                        .foregroundStyle(paper)
+                }
+            }
+            .frame(width: 40, height: 40).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("TalkToPrompt").font(.system(size: 17, weight: .semibold))
+                Text("Voice, wherever you write.")
+                    .font(.system(size: 11)).foregroundStyle(mutedInk)
+            }
+            Spacer(minLength: 4)
+            if ready {
+                readinessBadge
+            } else {
+                Button(action: actions.setup) { readinessBadge }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Not ready. Finish setup")
+                    .help("Finish setup to start dictating")
+            }
         }
-        .foregroundStyle(ink)
-        .padding(.horizontal, 10).padding(.vertical, 7)
-        .background(ink.opacity(0.12), in: Capsule())
-        .overlay(Capsule().strokeBorder(ink.opacity(0.25)))
+        .frame(height: 40)
+    }
+
+    private var readinessBadge: some View {
+        HStack(spacing: 4) {
+            Image(systemName: ready ? "checkmark.circle.fill" : "circle.dashed")
+                .font(.system(size: 10, weight: .medium))
+            Text(ready ? "Ready" : "Set up")
+                .font(.system(size: 10, weight: .semibold))
+        }
+        .foregroundStyle(ink.opacity(ready ? 0.85 : 0.6))
+        .padding(.horizontal, 8).padding(.vertical, 6)
+        .background(ink.opacity(0.055), in: Capsule())
+    }
+
+    private var shortcutGuide: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Hold to speak").font(.system(size: 13, weight: .medium))
+                Spacer(minLength: 6)
+                shiftKey("Left ⇧")
+                Text("+").font(.system(size: 10)).foregroundStyle(mutedInk)
+                shiftKey("Right ⇧")
+            }
+            HStack(spacing: 0) {
+                Text("Release to insert")
+                Text("  ·  ")
+                Text("Esc").font(.system(size: 10, weight: .medium, design: .monospaced))
+                Text(" to cancel")
+            }
+            .font(.system(size: 11)).foregroundStyle(mutedInk)
+        }
+        .padding(12)
+        .background(ink.opacity(0.045), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var apiKeyRow: some View {
+        HStack(spacing: 10) {
+            rowIcon("key.horizontal")
+            rowTitle("OpenAI API key", detail: state.apiKeyUnavailable ? "Unable to read key" : state.apiKeyStatus)
+            Spacer(minLength: 4)
+            Button(state.hasAPIKey ? "Change" : "Add key", action: actions.apiKey)
+                .accessibilityLabel(state.hasAPIKey ? "Change API Key" : "Enter API Key")
+                .buttonStyle(MenuActionStyle(ink: ink, paper: paper))
+            if state.hasAPIKey {
+                Button(action: actions.clearAPIKey) {
+                    Image(systemName: "xmark").font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(mutedInk).frame(width: 18, height: 26).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear API Key").help("Clear the saved API key")
+            }
+        }
+        .padding(.horizontal, 12).frame(height: 58)
+    }
+
+    private var loginRow: some View {
+        HStack(spacing: 10) {
+            rowIcon("arrow.up.right.square")
+            rowTitle("Launch at Login", detail: state.loginNeedsApproval || state.loginStatus == "Unavailable"
+                     ? state.loginStatus : "Ready when you sign in")
+            Spacer(minLength: 4)
+            if state.loginNeedsApproval {
+                Button(action: actions.loginSettings) {
+                    Image(systemName: "gearshape").font(.system(size: 12))
+                }
+                .buttonStyle(.plain).foregroundStyle(mutedInk)
+                .accessibilityLabel("Open System Settings → Login Items")
+                .help("Approve TalkToPrompt in Login Items")
+            }
+            Toggle("Launch at Login", isOn: Binding(
+                get: { state.loginRequested }, set: { actions.setLogin($0) }
+            ))
+            .toggleStyle(MonochromeSwitchStyle(ink: ink, paper: paper))
+            .help("Start TalkToPrompt when you sign in to your Mac, including after a restart")
+        }
+        .padding(.horizontal, 12).frame(height: 58)
+    }
+
+    private var languageRow: some View {
+        HStack(spacing: 10) {
+            rowIcon("globe")
+            rowTitle("Language hint", detail: "Language you’ll speak")
+            Spacer(minLength: 4)
+            Picker("Language hint", selection: Binding(
+                get: { state.transcriptionLanguage }, set: actions.setTranscriptionLanguage
+            )) {
+                Text("Auto-detect").tag("")
+                Divider()
+                ForEach(TranscriptionLanguage.all) { language in
+                    Text(language.name).tag(language.code)
+                }
+            }
+            .labelsHidden().pickerStyle(.menu).frame(width: 124)
+            .controlSize(.small)
+            .help("Suggest the input language, or choose Auto-detect. Your speech stays in its original language.")
+        }
+        .padding(.horizontal, 12).frame(height: 58)
+    }
+
+    private var rowDivider: some View {
+        Rectangle().fill(ink.opacity(0.07)).frame(height: 1).padding(.leading, 46)
+    }
+
+    private func rowTitle(_ title: String, detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(.system(size: 12, weight: .medium)).lineLimit(1)
+            Text(detail).font(.system(size: 10)).foregroundStyle(mutedInk).lineLimit(1)
+        }
     }
 
     private func shiftKey(_ title: String) -> some View {
-        Text(title).font(.system(size: 17, weight: .semibold, design: .monospaced))
-            .padding(.horizontal, 10).padding(.vertical, 5)
-            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
-            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.primary.opacity(0.14)))
+        Text(title).font(.system(size: 11, weight: .medium, design: .monospaced))
+            .padding(.horizontal, 7).padding(.vertical, 5)
+            .background(paper, in: RoundedRectangle(cornerRadius: 5))
+            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(ink.opacity(0.10)))
     }
 
     private func rowIcon(_ name: String) -> some View {
-        Image(systemName: name).font(.system(size: 17))
+        Image(systemName: name).font(.system(size: 14, weight: .regular))
+            .foregroundStyle(ink.opacity(0.55))
             .frame(width: 24, height: 24).accessibilityHidden(true)
     }
+}
 
-    private var errorInk: Color {
-        colorScheme == .dark ? NativeCalmPalette.red : Color(.sRGB, red: 0.70, green: 0.15, blue: 0.18)
+private struct MenuActionStyle: ButtonStyle {
+    let ink: Color
+    let paper: Color
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.font(.system(size: 10, weight: .medium))
+            .foregroundStyle(ink.opacity(configuration.isPressed ? 0.6 : 0.85))
+            .padding(.horizontal, 9).padding(.vertical, 6)
+            .background(paper, in: RoundedRectangle(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(ink.opacity(0.14)))
+            .contentShape(Rectangle())
+    }
+}
+
+private struct MonochromeSwitchStyle: ToggleStyle {
+    let ink: Color
+    let paper: Color
+
+    func makeBody(configuration: Configuration) -> some View {
+        Button { configuration.isOn.toggle() } label: {
+            Capsule().fill(configuration.isOn ? ink : ink.opacity(0.13))
+                .overlay(alignment: configuration.isOn ? .trailing : .leading) {
+                    Circle().fill(configuration.isOn ? paper : ink.opacity(0.45))
+                        .frame(width: 14, height: 14).padding(3)
+                }
+                .frame(width: 34, height: 20)
+        }
+        .buttonStyle(.plain)
+        .animation(.easeInOut(duration: 0.16), value: configuration.isOn)
+        .accessibilityRepresentation {
+            Toggle(isOn: configuration.$isOn) { configuration.label }
+        }
     }
 }

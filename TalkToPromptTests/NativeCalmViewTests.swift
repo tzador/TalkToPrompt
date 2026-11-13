@@ -72,6 +72,17 @@ final class NativeCalmViewTests: XCTestCase {
                 defer { window.close() }
                 let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
                 host.cacheDisplay(in: host.bounds, to: bitmap)
+                // Status and controls stay neutral in both appearances; Quit is the only color accent.
+                for y in stride(from: 0, to: bitmap.pixelsHigh, by: 4) {
+                    for x in stride(from: 0, to: bitmap.pixelsWide, by: 4) {
+                        let color = try XCTUnwrap(bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB))
+                        let channels = [color.redComponent, color.greenComponent, color.blueComponent]
+                        if channels.max()! - channels.min()! > 0.04 {
+                            XCTAssertGreaterThan(color.redComponent, color.greenComponent)
+                            XCTAssertEqual(color.greenComponent, color.blueComponent, accuracy: 0.04)
+                        }
+                    }
+                }
                 let name = "NativeCalm-\(isReady ? "ready" : "setup")-\(scheme == .dark ? "dark" : "light")"
                 let attachment = XCTAttachment(data: try XCTUnwrap(bitmap.representation(using: .png, properties: [:])), uniformTypeIdentifier: "public.png")
                 attachment.name = name
