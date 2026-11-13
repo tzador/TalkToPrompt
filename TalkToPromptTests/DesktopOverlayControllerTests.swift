@@ -5,18 +5,18 @@ import XCTest
 
 final class DesktopOverlayControllerTests: XCTestCase {
     @MainActor
-    func testTimerUsesMinutesAndSecondsAboveMonospacedListeningLabel() throws {
+    func testOnlyTimerUsesMonospacedFont() throws {
         let view = DesktopOverlayController.OverlayContentView(frame: NSRect(x: 0, y: 0, width: 800, height: 800))
         for (seconds, expected) in [(0, "00:00"), (17, "00:17"), (59, "00:59"), (60, "01:00"), (65, "01:05"), (359, "05:59")] {
             view.setMessage("Listening... \(seconds) seconds")
             view.layoutSubtreeIfNeeded()
             XCTAssertEqual(view.counterLabel.stringValue, expected)
             XCTAssertGreaterThan(view.counterLabel.frame.minY, view.statusLabel.frame.maxY)
-            for label in [view.statusLabel, view.counterLabel] {
-                XCTAssertTrue(try XCTUnwrap(label.font).isFixedPitch)
-            }
+            XCTAssertTrue(try XCTUnwrap(view.counterLabel.font).isFixedPitch)
+            XCTAssertFalse(try XCTUnwrap(view.statusLabel.font).isFixedPitch)
         }
         view.setMessage("Transcribing...")
+        XCTAssertFalse(try XCTUnwrap(view.statusLabel.font).isFixedPitch)
         XCTAssertTrue(view.counterLabel.isHidden)
         XCTAssertEqual(view.visualization.circle.opacity, 0.9)
     }
@@ -254,7 +254,7 @@ final class DesktopOverlayControllerTests: XCTestCase {
     }
 
     @MainActor
-    func testListeningCaptionIsGrayMonospacedAndCenteredOnlyWhenRequested() throws {
+    func testListeningCaptionIsGrayAndCenteredOnlyWhenRequested() throws {
         let overlay = DesktopOverlayController(screenFrames: { [NSRect(x: 0, y: 0, width: 800, height: 600)] })
         defer { overlay.stop() }
         overlay.start()

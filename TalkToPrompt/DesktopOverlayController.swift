@@ -278,7 +278,7 @@ final class DesktopOverlayController: VoiceSessionOverlay {
             captionSurface.wantsLayer = true
             addSubview(captionSurface)
 
-            statusLabel.font = .monospacedSystemFont(ofSize: 36, weight: .bold)
+            statusLabel.font = .systemFont(ofSize: 36, weight: .bold)
             statusLabel.textColor = Self.secondaryTextColor
             statusLabel.alignment = .center
             statusLabel.maximumNumberOfLines = 0
@@ -320,7 +320,7 @@ final class DesktopOverlayController: VoiceSessionOverlay {
             counterLabel.isHidden = counterLabel.stringValue.isEmpty
             animatesLetters = ["Listening...", "Transcribing..."].contains(statusLabel.stringValue)
             if animatesLetters { statusLabel.stringValue = String(statusLabel.stringValue.dropLast(3)) }
-            statusLabel.font = .monospacedSystemFont(ofSize: statusLabel.stringValue == "Listening" ? 54 : 36, weight: .bold)
+            statusLabel.font = .systemFont(ofSize: statusLabel.stringValue == "Listening" ? 54 : 36, weight: .bold)
             if !previousWord.isEmpty, message != nil, previousWord != statusLabel.stringValue {
                 let transition = CATransition()
                 transition.type = .fade
@@ -348,7 +348,7 @@ final class DesktopOverlayController: VoiceSessionOverlay {
             let paragraph = NSMutableParagraphStyle()
             paragraph.alignment = .center
             let attributed = NSMutableAttributedString(string: text, attributes: [
-                .font: statusLabel.font ?? NSFont.monospacedSystemFont(ofSize: 36, weight: .bold),
+                .font: statusLabel.font ?? NSFont.systemFont(ofSize: 36, weight: .bold),
                 .foregroundColor: Self.secondaryTextColor,
                 .paragraphStyle: paragraph
             ])
