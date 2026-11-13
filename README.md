@@ -24,6 +24,6 @@ Press **Escape** at any time to cancel recording or transcription. The overlay f
 
 The overlay shows elapsed recording time as `MM:SS` above “Listening”. Its single circle responds to your current volume and turns red after five minutes or at 20 MB, whichever comes first. Recording automatically stops and transcribes after six minutes or at 24 MB. Audio stays in memory as 16 kHz, 16-bit mono PCM and is uploaded as WAV.
 
-Status captions use the system font, with gray text and the current letter highlighted in black. Only the elapsed timer is monospaced. The desktop dims outside the circle, which has 90% opacity. During transcription, the circle gently expands and contracts, then collapses to zero when the overlay closes.
+Status captions use the system font, with gray text and a smoothly fading black letter highlight. The elapsed timer is monospaced and black. The desktop dims outside the circle, which has 90% opacity and a native background blur clipped to its shape. During transcription, the circle gently expands and contracts, then collapses to zero when the overlay closes.
 
 Use the menu bar icon to change your API key, choose a language hint, or enable **Launch at Login**. Green means ready; red means setup needs attention.

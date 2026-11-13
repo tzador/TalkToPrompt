@@ -5,6 +5,32 @@ import XCTest
 
 final class DesktopOverlayControllerTests: XCTestCase {
     @MainActor
+    func testHighlightCrossfadesAndTimerUpdatesDoNotRestartTheFade() throws {
+        let overlay = DesktopOverlayController(screenFrames: { [NSRect(x: 0, y: 0, width: 800, height: 600)] })
+        defer { overlay.stop() }
+        overlay.show()
+        let view = try XCTUnwrap(overlay.panels.first?.contentView as? DesktopOverlayController.OverlayContentView)
+        view.setMessage("Listening... 17 seconds")
+        view.layoutSubtreeIfNeeded()
+        view.displayIfNeeded()
+        XCTAssertEqual(view.counterLabel.textColor, .black)
+        view.setHighlightedLetter(1)
+        let fade = try XCTUnwrap(view.statusLabel.layer?.animation(forKey: "transition") as? CATransition)
+        XCTAssertEqual(fade.type, .fade)
+        XCTAssertEqual(fade.duration, 0.12)
+        view.statusLabel.layer?.removeAnimation(forKey: "transition")
+        view.setMessage("Listening... 18 seconds")
+        view.setHighlightedLetter(1)
+        XCTAssertNil(view.statusLabel.layer?.animation(forKey: "transition"))
+        XCTAssertEqual(view.counterLabel.stringValue, "00:18")
+        XCTAssertEqual(view.statusLabel.attributedStringValue.attribute(.foregroundColor, at: 1, effectiveRange: nil) as? NSColor, .black)
+        view.setMessage(nil)
+        view.setMessage("Listening... 0 seconds")
+        view.setHighlightedLetter(0)
+        XCTAssertEqual(view.statusLabel.attributedStringValue.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor, .black)
+    }
+
+    @MainActor
     func testOnlyTimerUsesMonospacedFont() throws {
         let view = DesktopOverlayController.OverlayContentView(frame: NSRect(x: 0, y: 0, width: 800, height: 800))
         for (seconds, expected) in [(0, "00:00"), (17, "00:17"), (59, "00:59"), (60, "01:00"), (65, "01:05"), (359, "05:59")] {
@@ -55,11 +81,16 @@ final class DesktopOverlayControllerTests: XCTestCase {
         XCTAssertNil(view.circle.animation(forKey: "opacity"))
         let circles = try XCTUnwrap(circlePulse.values as? [CGPath])
         let shades = try XCTUnwrap(dimmerPulse.values as? [CGPath])
+        let blurPulse = try XCTUnwrap(view.backdropMask.animation(forKey: "processingPulse") as? CAKeyframeAnimation)
+        let masks = try XCTUnwrap(blurPulse.values as? [CGPath])
+        XCTAssertEqual(blurPulse.beginTime, circlePulse.beginTime)
         XCTAssertEqual(circles.count, 121)
         XCTAssertEqual(circles.count, shades.count)
+        XCTAssertEqual(circles.count, masks.count)
         for index in circles.indices {
             let radius = view.centralRadius * (1 + AudioVisualizationView.processingAmplitude * CGFloat(sin(2 * .pi * Double(index) / 120)))
             XCTAssertEqual(circles[index].boundingBox.width / 2, radius, accuracy: 0.001)
+            XCTAssertEqual(masks[index].boundingBox, circles[index].boundingBox)
             XCTAssertFalse(shades[index].contains(center, using: .evenOdd))
             XCTAssertTrue(shades[index].contains(CGPoint(x: 400 + radius + 1, y: 400), using: .evenOdd))
             XCTAssertFalse(shades[index].contains(CGPoint(x: 400 + radius - 1, y: 400), using: .evenOdd))
@@ -67,6 +98,8 @@ final class DesktopOverlayControllerTests: XCTestCase {
         view.animateVisibility(visible: false, duration: DesktopOverlayController.fadeDuration)
         XCTAssertNil(view.circle.animation(forKey: "processingPulse"))
         XCTAssertNil(view.dimmer.animation(forKey: "processingPulse"))
+        XCTAssertNil(view.backdropMask.animation(forKey: "processingPulse"))
+        XCTAssertEqual(view.backdropMask.path?.boundingBox.width, 0)
         XCTAssertEqual(view.circle.path?.boundingBox.width, 0)
         XCTAssertTrue(try XCTUnwrap(view.dimmer.path).contains(center, using: .evenOdd))
         XCTAssertEqual(view.circle.animation(forKey: "radiusScale")?.duration,
@@ -228,7 +261,7 @@ final class DesktopOverlayControllerTests: XCTestCase {
             XCTAssertEqual(view.counterLabel.stringValue, "00:04")
             XCTAssertFalse(view.counterLabel.isHidden)
             XCTAssertEqual(view.counterLabel.font?.pointSize, 20)
-            XCTAssertEqual(view.counterLabel.textColor, DesktopOverlayController.OverlayContentView.secondaryTextColor)
+            XCTAssertEqual(view.counterLabel.textColor, .black)
             let font = try XCTUnwrap(view.counterLabel.font)
             XCTAssertFalse(NSFontManager.shared.traits(of: font).contains(.boldFontMask))
             view.layoutSubtreeIfNeeded()
@@ -407,7 +440,10 @@ final class DesktopOverlayControllerTests: XCTestCase {
         XCTAssertEqual(animation.fromValue as? Float, 0)
         XCTAssertEqual(animation.toValue as? Float, 1)
         let content = try XCTUnwrap(panel.contentView as? DesktopOverlayController.OverlayContentView)
-        XCTAssertFalse(content.subviews.contains { $0 is NSVisualEffectView })
+        XCTAssertTrue(content.backdrop.layer?.mask === content.visualization.backdropMask)
+        XCTAssertEqual(content.backdrop.blendingMode, .behindWindow)
+        XCTAssertEqual(content.backdrop.material, .underWindowBackground)
+        XCTAssertEqual(content.backdrop.state, .active)
         XCTAssertEqual(content.visualization.dimmer.fillRule, .evenOdd)
         let color = try XCTUnwrap(NSColor(cgColor: try XCTUnwrap(content.visualization.dimmer.fillColor))?.usingColorSpace(.deviceRGB))
         XCTAssertEqual(color.redComponent, 0)

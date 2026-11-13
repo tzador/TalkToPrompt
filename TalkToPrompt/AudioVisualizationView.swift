@@ -13,6 +13,7 @@ final class AudioVisualizationView: NSView {
     let dimmer = CAShapeLayer()
     let geometryLayer = CALayer()
     let circle = CAShapeLayer()
+    let backdropMask = CAShapeLayer()
     private(set) var isListening = false
     private(set) var isProcessing = false
     private(set) var centralRadius: CGFloat = 180
@@ -30,6 +31,7 @@ final class AudioVisualizationView: NSView {
         layer?.addSublayer(geometryLayer)
         circle.fillColor = NSColor.white.cgColor
         circle.opacity = Self.centralOpacity
+        backdropMask.fillColor = NSColor.black.cgColor
         geometryLayer.addSublayer(circle)
         isHidden = true
     }
@@ -40,6 +42,7 @@ final class AudioVisualizationView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         dimmer.frame = bounds
+        backdropMask.frame = bounds
         geometryLayer.bounds = bounds
         geometryLayer.position = CGPoint(x: bounds.midX, y: bounds.midY)
         let availableRadius = max(1, min(bounds.width, bounds.height) / 2 - 20)
@@ -114,7 +117,7 @@ final class AudioVisualizationView: NSView {
         let target = paths(radius: radius)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        for (shape, path) in [(circle, target.circle), (dimmer, target.dimmer)] {
+        for (shape, path) in [(circle, target.circle), (dimmer, target.dimmer), (backdropMask, target.circle)] {
             let previous = shape.animation(forKey: "radiusScale") as? CABasicAnimation
             let current = shape.presentation()?.path ?? (previous?.fromValue as! CGPath?) ?? shape.path ?? path
             shape.removeAnimation(forKey: "path")
@@ -139,7 +142,8 @@ final class AudioVisualizationView: NSView {
             paths(radius: centralRadius * (1 + Self.processingAmplitude * CGFloat(sin(2 * .pi * Double(index) / Double(samples)))))
         }
         let start = CACurrentMediaTime() + delay
-        for (shape, values) in [(circle, frames.map(\.circle)), (dimmer, frames.map(\.dimmer))] {
+        for (shape, values) in [(circle, frames.map(\.circle)), (dimmer, frames.map(\.dimmer)),
+                                (backdropMask, frames.map(\.circle))] {
             let pulse = CAKeyframeAnimation(keyPath: "path")
             pulse.values = values
             pulse.duration = Self.processingPeriod

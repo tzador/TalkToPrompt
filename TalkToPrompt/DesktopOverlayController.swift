@@ -257,17 +257,30 @@ final class DesktopOverlayController: VoiceSessionOverlay {
     final class OverlayContentView: NSView {
         static let textColor = NSColor.black
         static let secondaryTextColor = NSColor.gray
+        static let letterFadeDuration: TimeInterval = 0.12
+        let backdrop = NSVisualEffectView()
         let visualization = AudioVisualizationView(frame: .zero)
         let captionSurface = NSView()
         let statusLabel = NSTextField(labelWithString: "")
         let counterLabel = NSTextField(labelWithString: "")
         private var animatesLetters = false
         private var highlightIndex = 0
+        private var highlightedWord = ""
 
         override init(frame: NSRect) {
             super.init(frame: frame)
             wantsLayer = true
             layer?.opacity = 0
+
+            backdrop.frame = bounds
+            backdrop.autoresizingMask = [.width, .height]
+            backdrop.blendingMode = .behindWindow
+            backdrop.material = .underWindowBackground
+            backdrop.state = .active
+            backdrop.appearance = NSAppearance(named: .aqua)
+            backdrop.wantsLayer = true
+            backdrop.layer?.mask = visualization.backdropMask
+            addSubview(backdrop)
 
             visualization.frame = bounds
             visualization.autoresizingMask = [.width, .height]
@@ -279,6 +292,7 @@ final class DesktopOverlayController: VoiceSessionOverlay {
             addSubview(captionSurface)
 
             statusLabel.font = .systemFont(ofSize: 36, weight: .bold)
+            statusLabel.wantsLayer = true
             statusLabel.textColor = Self.secondaryTextColor
             statusLabel.alignment = .center
             statusLabel.maximumNumberOfLines = 0
@@ -288,7 +302,7 @@ final class DesktopOverlayController: VoiceSessionOverlay {
             statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             captionSurface.addSubview(statusLabel)
             counterLabel.font = .monospacedSystemFont(ofSize: 20, weight: .regular)
-            counterLabel.textColor = Self.secondaryTextColor
+            counterLabel.textColor = .black
             counterLabel.alignment = .center
             counterLabel.isHidden = true
             counterLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -308,19 +322,24 @@ final class DesktopOverlayController: VoiceSessionOverlay {
 
         func setMessage(_ message: String?) {
             let previousWord = statusLabel.stringValue
+            let status: String
             if let message, let separator = message.range(of: "... ") {
-                statusLabel.stringValue = String(message[..<separator.lowerBound]) + "..."
+                status = String(message[..<separator.lowerBound]) + "..."
                 let seconds = max(0, Int(message[separator.upperBound...].split(separator: " ").first ?? "0") ?? 0)
                 counterLabel.stringValue = String(format: "%02d:%02d", seconds / 60, seconds % 60)
             } else {
-                statusLabel.stringValue = message ?? ""
+                status = message ?? ""
                 counterLabel.stringValue = ""
             }
             statusLabel.isHidden = message == nil
             counterLabel.isHidden = counterLabel.stringValue.isEmpty
-            animatesLetters = ["Listening...", "Transcribing..."].contains(statusLabel.stringValue)
-            if animatesLetters { statusLabel.stringValue = String(statusLabel.stringValue.dropLast(3)) }
-            statusLabel.font = .systemFont(ofSize: statusLabel.stringValue == "Listening" ? 54 : 36, weight: .bold)
+            animatesLetters = ["Listening...", "Transcribing..."].contains(status)
+            let word = animatesLetters ? String(status.dropLast(3)) : status
+            if previousWord != word {
+                highlightedWord = ""
+                statusLabel.stringValue = word
+                statusLabel.font = .systemFont(ofSize: word == "Listening" ? 54 : 36, weight: .bold)
+            }
             if !previousWord.isEmpty, message != nil, previousWord != statusLabel.stringValue {
                 let transition = CATransition()
                 transition.type = .fade
@@ -341,10 +360,12 @@ final class DesktopOverlayController: VoiceSessionOverlay {
         }
 
         func setHighlightedLetter(_ count: Int) {
-            highlightIndex = count
             guard animatesLetters else { return }
-            // Change only the ink, keeping the word's layout stationary.
             let text = statusLabel.stringValue
+            guard highlightedWord != text || highlightIndex != count else { return }
+            let shouldFade = highlightedWord == text
+            highlightedWord = text
+            highlightIndex = count
             let paragraph = NSMutableParagraphStyle()
             paragraph.alignment = .center
             let attributed = NSMutableAttributedString(string: text, attributes: [
@@ -355,6 +376,13 @@ final class DesktopOverlayController: VoiceSessionOverlay {
             attributed.addAttribute(.foregroundColor, value: Self.textColor,
                                     range: NSRange(location: count % (text as NSString).length, length: 1))
             statusLabel.attributedStringValue = attributed
+            if shouldFade {
+                let fade = CATransition()
+                fade.type = .fade
+                fade.duration = Self.letterFadeDuration
+                fade.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                statusLabel.layer?.add(fade, forKey: "transition")
+            }
         }
 
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
